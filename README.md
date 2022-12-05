@@ -6,5 +6,8 @@ Shuheng Liao, Ashkan Golgoon
 
 Example results:
 <p align="middle">
-  <img src="docs/files/1.avi" width="600" />
+  <img src="docs/files/L_contour.gif" width="600" />
+</p>
+<p align="middle">
+  <img src="docs/files/L_zigzag.gif" width="600" />
 </p>
