@@ -3,3 +3,8 @@ A GPU-accelerated FEM solver for residual stress simulation of additive manufact
 
 Authors:
 Shuheng Liao, Ashkan Golgoon
+
+Example results:
+<p align="middle">
+  <img src="docs/files/1.avi" width="600" />
+</p>
