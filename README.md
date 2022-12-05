@@ -1,10 +1,10 @@
 # AM Thermomechanical Solver
 A GPU-accelerated FEM solver for residual stress simulation of additive manufacturing process using CuPy
 
-Authors:
+**Authors:**
 Shuheng Liao, Ashkan Golgoon
 
-Example results:
+**Example results:**
 <p align="middle">
   <img src="docs/files/L_contour.gif" width="600" />
 </p>
