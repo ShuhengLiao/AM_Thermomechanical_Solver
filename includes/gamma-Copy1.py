@@ -449,7 +449,7 @@ class domain_mgr():
         print("Time of reading input files: {}".format(end-start))
         
         # calculating critical timestep
-        self.defaultFac = 0.8
+        self.defaultFac = 0.75
         start = time.time()
         self.get_timestep()
         end = time.time()
@@ -739,12 +739,13 @@ class heat_solve_mgr():
             
 
     
-    def calculate_melt(self,solidus):
+    def calculate_melt(self):
         domain = self.domain
         elements = domain.elements_order[domain.active_elements]
         temperature_ele_nodes = self.temperature[elements]
 
         temperature_ele_max = temperature_ele_nodes.max(axis = 1)
+        solidus = 1533.15
         elements = elements[temperature_ele_nodes[:,4:8].max(axis=1)>=solidus]
         temperature_ele_nodes = self.temperature[elements]
         if elements.shape[0]>0:
