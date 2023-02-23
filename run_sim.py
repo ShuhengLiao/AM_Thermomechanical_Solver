@@ -1,8 +1,8 @@
 import sys
-sys.path.append('../../includes/')
+#sys.path.append('/includes/')
 import os
-from preprocessor import write_keywords,write_birth,write_parameters
-from gamma import domain_mgr, heat_solve_mgr,load_toolpath,get_toolpath
+from includes.preprocessor import write_keywords,write_birth,write_parameters
+from includes.gamma import domain_mgr, heat_solve_mgr,load_toolpath,get_toolpath
 import cupy as cp
 import numpy as np
 import pyvista as pv
