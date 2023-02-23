@@ -1,4 +1,5 @@
 import sys
+import importlib
 import os
 from includes.preprocessor import write_keywords,write_birth,write_parameters
 from includes.gamma import domain_mgr, heat_solve_mgr,load_toolpath,get_toolpath
@@ -6,19 +7,21 @@ import cupy as cp
 import numpy as np
 import pyvista as pv
 import vtk
-cp.cuda.Device(0).use()
+import numba
 
+# For debugging gamma.py or preprocessor, uncomment
+importlib.reload(sys.modules['includes.gamma'])
+importlib.reload(sys.modules['includes.preprocessor'])
 
 class FeaModel():
 
-    def __init__(self, laserpowerfile):
+    def __init__(self, geom_dir, laserpowerfile):
 
         ## ACTIVATE DOMAIN
-        self.geometry_name = "wall.k"
+        self.geometry_name = geom_dir
         self.domain = domain_mgr(filename=self.geometry_name)
         self.heat_solver = heat_solve_mgr(self.domain)
-
-
+        
         ## RUN SIMULATION
         self.output_step = 1  # output time step
 
@@ -36,9 +39,12 @@ class FeaModel():
 
         # time loop
         while self.domain.current_time < self.domain.end_time - 1e-8:
+            # Load the current step of the laser profile
+
+            # Run the solver
             self.heat_solver.time_integration()
             
-            # save file
+            # save .vtk file
             if self.domain.current_time >= output_time + self.output_step:
                 print("Current time:  {}, Percentage done:  {}%".format(
                     self.domain.current_time, 100 * self.domain.current_time / self.domain.end_time))
