@@ -1,5 +1,4 @@
 import sys
-#sys.path.append('/includes/')
 import os
 from includes.preprocessor import write_keywords,write_birth,write_parameters
 from includes.gamma import domain_mgr, heat_solve_mgr,load_toolpath,get_toolpath
@@ -12,20 +11,19 @@ cp.cuda.Device(0).use()
 
 class FeaModel():
 
-    def __init__(self):
+    def __init__(self, laserpowerfile):
 
         ## ACTIVATE DOMAIN
         self.geometry_name = "wall.k"
         self.domain = domain_mgr(filename=self.geometry_name)
         self.heat_solver = heat_solve_mgr(self.domain)
 
+
         ## RUN SIMULATION
-        self.output_step = 2  # output time step
+        self.output_step = 1  # output time step
 
-        # initialization
+        # Initialization
         self.file_num = 0
-
-        
 
         # save file
         # filename = 'vtk/u{:05d}.vtk'.format(self.file_num)
@@ -62,6 +60,30 @@ class FeaModel():
         active_grid = pv.UnstructuredGrid(active_cells, active_cell_type, points)
         active_grid.point_data['temp'] = self.heat_solver.temperature.get()
         active_grid.save(filename)
+
+
+class DataRecorder():
+    def __init__(self,
+        outputFolderPath = "./ouput",
+        dataStreams = [
+            "pos_x",
+            "pos_y",
+            "pos_z",
+            "laser_power",
+            "active_nodes",
+            "timestamp"
+        ]
+    ):
+        self.outputFolderPath = outputFolderPath
+        self.dataStreams = dataStreams
+
+        self.files = {}
+        for streamName in dataStreams:
+            self.files[streamName] = open(os.path.join(outputFolderPath, streamName.csv))
+    
+    def __del__(self):
+        for _, f in self.files.items():
+            f.close()
 
 
 if __name__ == "__main__":
