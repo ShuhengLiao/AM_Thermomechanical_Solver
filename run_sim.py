@@ -10,8 +10,8 @@ import vtk
 import numba
 
 # For debugging gamma.py or preprocessor, uncomment
-importlib.reload(sys.modules['includes.gamma'])
-importlib.reload(sys.modules['includes.preprocessor'])
+#mportlib.reload(sys.modules['includes.gamma'])
+#importlib.reload(sys.modules['includes.preprocessor'])
 
 class FeaModel():
 
