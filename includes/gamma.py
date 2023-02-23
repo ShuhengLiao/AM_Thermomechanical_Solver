@@ -403,7 +403,7 @@ class domain_mgr():
                         break
 
         nodes = np.array(nodes)
-        elements = np.array(elements)
+        elements = np.array(elements, dtype=np.int64)
         element_mat = np.array(element_mat)
         element_birth = np.array(birth_list_element)
         node_birth = np.array(birth_list_node,dtype=np.float64)
@@ -487,6 +487,10 @@ class domain_mgr():
         connVecIndx = np.arange(0,ele_num*8)
         connVecIndx  = connVecIndx[np.argsort(connVec)]
         connVec = connVec[connVecIndx]
+
+        # RESOLVE DTYPE ISSUES
+        connVecIndx = connVecIndx.astype(np.int64)
+        conn_to_el_Vec = conn_to_el_Vec.astype(np.int64)
 
         # find neighbor eles
         createElElConn(elements,connElEl,connVec,connVecIndx,conn_to_el_Vec)
