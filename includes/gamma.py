@@ -212,7 +212,8 @@ def derivate_shape_fnc_surface(parCoord):
 
 
 class domain_mgr():
-    def __init__(self,filename,sort_birth = True):
+    def __init__(self,filename,sort_birth = True, toolpathdir='toolpath.crs'):
+        self.toolpathdir = toolpathdir
         self.filename = filename
         self.sort_birth = sort_birth
         parCoords_element = np.array([[-1.0,-1.0,-1.0],[1.0,-1.0,-1.0],[1.0, 1.0,-1.0],[-1.0, 1.0,-1.0],
@@ -303,7 +304,7 @@ class domain_mgr():
 
                 elif line.split()[0] == '*TOOL_FILE':
                     line = next(f)
-                    self.toolpath_file = line.split()[0]
+                    #self.toolpath_file = line.split()[0]   # REMOVED -TAKES TOOLPATH AS ARGUMENT FROM TOP LEVEL
                     line = next(f)
 
                 elif line.split()[0] == '*PARAMETER':
@@ -457,7 +458,7 @@ class domain_mgr():
 
         # reading and interpolating toolpath
         start = time.time()
-        toolpath_raw = load_toolpath(filename = self.toolpath_file)
+        toolpath_raw = load_toolpath(filename = self.toolpathdir)
         toolpath = get_toolpath(toolpath_raw,self.dt,self.end_time)
         end = time.time()
         print("Time of reading and interpolating toolpath: {}".format(end-start))

@@ -7,26 +7,35 @@ import cupy as cp
 import numpy as np
 import pyvista as pv
 import vtk
-import numba
+import pandas as pd
 
 # For debugging gamma.py or preprocessor, uncomment
-#mportlib.reload(sys.modules['includes.gamma'])
-#importlib.reload(sys.modules['includes.preprocessor'])
+importlib.reload(sys.modules['includes.gamma'])
+importlib.reload(sys.modules['includes.preprocessor'])
 
 class FeaModel():
 
-    def __init__(self, geom_dir, laserpowerfile):
+    def __init__(self, geom_dir, laserpowerfile, outputstep = 2):
 
         ## ACTIVATE DOMAIN
-        self.geometry_name = geom_dir
-        self.domain = domain_mgr(filename=self.geometry_name)
+        self.geometry_file = "geometries-toolpaths/" + geom_dir + "/inp.k"
+        self.toolpath_file = "geometries-toolpaths/" + geom_dir + "/toolpath.crs"
+        self.domain = domain_mgr(filename=self.geometry_file, toolpathdir=self.toolpath_file)
+
         self.heat_solver = heat_solve_mgr(self.domain)
         
+        inp = pd.read_csv("laser_inputs/" + geom_dir + "/" + laserpowerfile).to_numpy()
+
+        self.laser_power_seq = inp[:, 0]
+        self.timesteps = inp[:, 1]
+        self.max_itr = len(self.timesteps)
+
         ## RUN SIMULATION
-        self.output_step = 1  # output time step
+        self.output_step = outputstep  # output time step
 
         # Initialization
         self.file_num = 0
+        self.time_itr = 0
 
         # save file
         # filename = 'vtk/u{:05d}.vtk'.format(self.file_num)
@@ -34,17 +43,22 @@ class FeaModel():
         self.file_num = self.file_num + 1
         output_time = self.domain.current_time
 
-    def run():
+    def run(self):
         ''' Run the simulation. '''
 
         # time loop
-        while self.domain.current_time < self.domain.end_time - 1e-8:
+        while self.domain.current_time < self.domain.end_time - 1e-8 and self.time_itr < self.max_itr :
             # Load the current step of the laser profile
+            self.heat_solver.q_in = self.laser_power_seq[self.time_itr]
+            
+            # Check that the time steps agree
+            if np.abs(self.domain.current_time - self.timesteps[self.time_itr]) / self.domain.dt > 0.1:
+                raise Exception("Error! Time steps of LP input are not well aligned with simulation steps")
 
             # Run the solver
             self.heat_solver.time_integration()
-            
-            # save .vtk file
+
+            # #save .vtk file
             if self.domain.current_time >= output_time + self.output_step:
                 print("Current time:  {}, Percentage done:  {}%".format(
                     self.domain.current_time, 100 * self.domain.current_time / self.domain.end_time))
@@ -52,8 +66,14 @@ class FeaModel():
                 # save_vtk(filename)
                 self.file_num = self.file_num + 1
                 output_time = self.domain.current_time
+
+            # Save data
+            self.recordDataPoint()
+
+            # Iteratate
+            self.time_itr = self.time_itr + 1
     
-    def recordDataPoint():
+    def recordDataPoint(self):
         ''' Record a single datapoint at the current simulation timestep. '''
         pass
 
@@ -91,7 +111,6 @@ class DataRecorder():
         for _, f in self.files.items():
             f.close()
 
-
 if __name__ == "__main__":
-    model = FeaModel()
-    model.run()
+    model = FeaModel('thin_wall', 'LP_1.csv')
+    #model.run()
