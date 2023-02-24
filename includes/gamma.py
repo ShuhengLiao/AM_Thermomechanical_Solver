@@ -138,7 +138,7 @@ def createSurf(elements,nodes,element_birth,connect_surf,surfaces,surface_birth,
 
 
 
-def load_toolpath(filename = 'toolpath.crs'):
+def load_toolpath(filename):
     toolpath_raw=pd.read_table(filename, delimiter=r"\s+",header=None, names=['time','x','y','z','state'])
     return toolpath_raw.to_numpy()
 
@@ -320,7 +320,9 @@ class domain_mgr():
                 elif line.split()[0] == '*GAUSS_LASER':
                     line = next(f)
                     text = line.split()
-                    self.q_in = float(text[0])*float(text[2])
+                    self.lp = float(text[0]) # Effective laser power
+                    self.absortivity = float(text[2])   # Absortivity
+                    self.q_in = self.lp*self.absortivity    # Actual power input
                     self.r_beam = float(text[1])
 
                 elif line.split()[0] == '*CONTROL_TIMESTEP':
