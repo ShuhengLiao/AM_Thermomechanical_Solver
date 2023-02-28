@@ -32,17 +32,16 @@ for itr in range(0, num_LP):
     sim_itr = rs.FeaModel(geom_dir=sim_dir_name, laserpowerfile=laser_file, outputstep = 1)
     # Run simulation
     sim_itr.run()
-    
 
     ## Uploading
-    ## TODO - write this section into a subroutine, so the next sim can run concurrently with the uploading process.
     zarpth = os.path.join("./zarr_output", output_dir) + ".zarr"
     sendpath = os.path.join(rclone_stream, "DED-DT - IDEAS Lab", "08-Technical", "data-gamma")
 
-    new_outpath = os.path.join(sendpath, zarpth)
+    new_outpath = os.path.join(sendpath, output_dir)
 
     # Zip .zarr file
-    subprocess.run('tar -czf "' + sim_dir_name +"_" + laser_file + '.tar.gz" "' + zarpth + '"', shell=True, executable='/bin/bash')
+    zipcmd = 'tar -czf "' + sim_dir_name +"_" + laser_file + '.tar.gz" "' + zarpth + '"'
+    uploadcmd = 'rclone copy "' + sim_dir_name + '_' + laser_file + '.tar.gz" "' + new_outpath + '" -v'
 
-    # Upload to cloud using rsync
-    subprocess.run('rclone sync "' + sim_dir_name + '_' + laser_file + '.tar.gz" "' + new_outpath + '" -vv ', shell=True, executable='/bin/bash')
+    # Run commands subsequently to upload to drive
+    subprocess.Popen(zipcmd + " && " + uploadcmd, shell=True, executable='/bin/bash')
