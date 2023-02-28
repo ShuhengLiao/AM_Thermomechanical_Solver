@@ -17,7 +17,7 @@ importlib.reload(sys.modules['includes.gamma'])
 importlib.reload(sys.modules['includes.preprocessor'])
 
 class FeaModel():
-    def __init__(self, geom_dir, laserpowerfile, outputstep = 1):
+    def __init__(self, geom_dir, laserpowerfile, outputstep = 1, outputVtkFiles = False):
 
         ## Setting up resources
         # laserpowerfile: profile of laser power w.r.t time
@@ -51,8 +51,10 @@ class FeaModel():
         self.output_times = np.linspace(0, self.output_step*(self.max_itr), (self.max_itr+1))
 
         # Save initial state as vtk file
-        filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.file_num))
-        self.save_vtk(filename)
+        self.outputVtkFiles = outputVtkFiles
+        if self.outputVtkFiles:
+            filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.file_num))
+            self.save_vtk(filename)
         self.file_num = self.file_num + 1
     
     def run(self):
@@ -85,8 +87,9 @@ class FeaModel():
                     self.domain.current_time, 100 * self.domain.current_time / self.domain.end_time))
                 
                 # vtk file filename and save
-                filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.file_num))
-                self.save_vtk(filename)
+                if self.outputVtkFiles:
+                    filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.file_num))
+                    self.save_vtk(filename)
                     
                 # iterate file number
                 self.file_num = self.file_num + 1

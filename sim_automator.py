@@ -18,5 +18,5 @@ sim_dir_name = "thin_wall"
 
 num_LP = 5 # Number of laser profiles to run
 for itr in range(0, num_LP):
-    sim_itr = rs.FeaModel(geom_dir=sim_dir_name, laserpowerfile=("LP_" + str(itr+1)))
+    sim_itr = rs.FeaModel(geom_dir=sim_dir_name, laserpowerfile=("LP_" + str(itr+1)), outputstep = 0.002)
     sim_itr.run()
