@@ -41,6 +41,8 @@ class FeaModel():
         self.max_itr = len(self.timesteps)
 
         ### Initialization of outputs
+
+        # Start datarecorder object to save pointwise data
         self.zarr_stream = DataRecorder(nnodes=self.domain.nodes.shape[0], outputFolderPath=os.path.join("./zarr_output", self.geom_dir, self.laserpowerfile)+".zarr")
 
         # file_num: .vtk output iteration
@@ -125,19 +127,39 @@ class FeaModel():
     #     del output_obj
     #     pass
     
-    def RecordToZarr(self):
+    def RecordToZarr(self, outputmode="structured"):
         '''Records a single data point to a zarr file'''
-        
-        # For each of the data streams, append the data for the current time step
-        # expanding dimensions as needed to match
-        self.zarr_stream.streamobj["timestamp"].append(np.expand_dims(np.expand_dims(self.domain.current_time, axis=0), axis=1), axis=0)
-        self.zarr_stream.streamobj["pos_x"].append(np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[0].get(), axis=0), axis=1), axis=0)
-        self.zarr_stream.streamobj["pos_y"].append(np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[1].get(), axis=0), axis=1), axis=0)
-        self.zarr_stream.streamobj["pos_z"].append(np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[2].get(), axis=0), axis=1), axis=0)
-        self.zarr_stream.streamobj["laser_power"].append(np.expand_dims(np.expand_dims(self.heat_solver.q_in, axis=0), axis=1), axis=0)
-        self.zarr_stream.streamobj["active_nodes"].append(np.expand_dims(self.domain.active_nodes.astype('i1'), axis=0), axis=0)
-        self.zarr_stream.streamobj["ff_temperature"].append(np.expand_dims(self.heat_solver.temperature.get(), axis=0), axis=0)
+        timestep = np.expand_dims(np.expand_dims(self.domain.current_time, axis=0), axis=1)
+        pos_x = np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[0].get(), axis=0), axis=1)
+        pos_y = np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[1].get(), axis=0), axis=1)
+        pos_z = np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[2].get(), axis=0), axis=1)
+        laser_power = np.expand_dims(np.expand_dims(self.heat_solver.q_in, axis=0), axis=1)
+        active_nodes = np.expand_dims(self.domain.active_nodes.astype('i1'), axis=0)
+        ff_temperature = np.expand_dims(self.heat_solver.temperature.get(), axis=0)
 
+        if outputmode == "structured":
+            # For each of the data streams, append the data for the current time step
+            # expanding dimensions as needed to match
+            self.zarr_stream.streamobj["timestamp"].append(timestep, axis=0)
+            self.zarr_stream.streamobj["pos_x"].append(pos_x, axis=0)
+            self.zarr_stream.streamobj["pos_y"].append(pos_y, axis=0)
+            self.zarr_stream.streamobj["pos_z"].append(pos_z, axis=0)
+            self.zarr_stream.streamobj["laser_power"].append(laser_power, axis=0)
+            self.zarr_stream.streamobj["active_nodes"].append(active_nodes, axis=0)
+            self.zarr_stream.streamobj["ff_temperature"].append(ff_temperature, axis=0)
+        elif outputmode == "bulked":
+            new_row = np.zeros([1, (5+self.domain.nodes.shape[0])])
+            new_row[0, 1] = timestep[0, 0]
+            new_row[0, 2] = pos_x[0, 0]
+            new_row[0, 3] = pos_y[0, 0]
+            new_row[0, 4] = pos_z[0, 0]
+            new_row[0, 5] = laser_power[0, 0]
+            new_row[0, 6:(6+self.domain.nodes.shape[0])] = laser_power[0]
+            self.zarr_stream.streamobj["all_floats"].append(new_row, axis=0)
+            self.zarr_stream.streamobj["active_nodes"].append(active_nodes, axis=0)
+        else:
+            raise Exception("Error! Invalid zarr output type!")
+    
     ## DEFINE SAVE VTK FILE FUNCTION
     def save_vtk(self, filename):
         active_elements = self.domain.elements[self.domain.active_elements].tolist()
@@ -157,33 +179,42 @@ class DataRecorder():
     def __init__(self,
         nnodes,
         outputFolderPath = "ouput",
+        outputmode = "structured"
     ):
         
         # Location to save file
-        self.outputFolderPath = outputFolderPath
 
-        # Types of data being captured.
-        self.dataStreams = [
-            "timestamp",
-            "pos_x",
-            "pos_y",
-            "pos_z",
-            "laser_power",
-            "active_nodes",
-            "ff_temperature"
-        ]
+        if outputmode == "structured":
+            self.outputFolderPath = outputFolderPath
+            # Types of data being captured
+            self.dataStreams = [
+                "timestamp",
+                "pos_x",
+                "pos_y",
+                "pos_z",
+                "laser_power",
+                "active_nodes",
+                "ff_temperature"
+            ]
+            # Dimension of one time-step of each data stream
+            dims = [1, 1, 1, 1, 1, nnodes, nnodes]
+            # Type of each data stream
+            types = ['f8', 'f8', 'f8', 'f8', 'f8', 'i1', 'f8']
 
-        # Dimension of one time-step of each data stream
-        dims = [1, 1, 1, 1, 1, nnodes, nnodes]
+        elif outputmode == "bulked":
+            self.outputFolderPath = outputFolderPath
+            self.dataStreams = ["all_floats", "active_nodes"]
+            dims = [5 + nnodes, nnodes]
+            types = ['f8', 'i1']
+        else:
+            raise Exception("Error! Invalid zarr output type!")
 
-        # Type of each data stream
-        types = ['f8', 'f8', 'f8', 'f8', 'f8', 'i1', 'f8']
         self.dimsdict = {self.dataStreams[itr]:dims[itr] for itr in range(0, len(self.dataStreams))}
         self.typedict = {self.dataStreams[itr]:types[itr] for itr in range(0, len(self.dataStreams))}
 
         # dict containing the data streams themselves
         self.streamobj = dict.fromkeys(self.dataStreams)
-
+        
         # Create zarr arrays for each data stream with length 1
         self.out_root = z.group(outputFolderPath)
         for stream in self.dataStreams:
@@ -191,8 +222,9 @@ class DataRecorder():
                 self.streamobj[stream] = self.out_root.create_dataset(stream, shape=(1, self.dimsdict[stream]), dtype=self.typedict[stream])
             except:
                 # Fails if directory already exists
+                # todo: ideally, this will ask the user if they want to overwrite the output files
+                # and do so with confirmation
                 raise Exception("Error! Base directory not empty!")
-                pass
 
 if __name__ == "__main__":
     model = FeaModel('thin_wall', 'LP_1')
