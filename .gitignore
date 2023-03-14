@@ -6,3 +6,4 @@ launch.json
 *.tar.gz
 *.zgroup
 *.pyc
+*.csv

@@ -228,4 +228,5 @@ class DataRecorder():
 
 if __name__ == "__main__":
     model = FeaModel('thin_wall', 'LP_1')
-    model.run()
+    print(model.domain.end_time)
+    #model.run()

@@ -42,7 +42,9 @@ for itr in range(0, num_LP):
 
     # Zip .zarr file
     zipcmd = 'tar -czf "' + sim_dir_name +"_" + laser_file + '.tar.gz" "' + zarpth + '"'
+    # Upload targz
     uploadcmd = 'rclone copy "' + sim_dir_name + '_' + laser_file + '.tar.gz" "' + new_outpath + '" -v'
+    # Delete targz
     deletecmd = 'rm -rf "' + sim_dir_name + '_' + laser_file + '.tar.gz"'
 
     # Run commands subsequently to upload to drive
