@@ -7,3 +7,4 @@ launch.json
 *.zgroup
 *.pyc
 *.csv
+*nohup.out*

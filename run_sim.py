@@ -132,10 +132,10 @@ class FeaModel():
         DelVTKOrigCmd = 'rm -rf "' + vtkpth + '"'
 
         # Run zarr commands subsequently to upload zarr files to drive
-        subprocess.Popen(TarZarrCmd + " && " + UploadZarrTarCmd + " && " + DelZarrTarCmd + " && "+ DelZarrOrigCmd, shell=True, executable='/bin/bash')
-
+        subprocess.Popen(TarZarrCmd + " && " + DelZarrOrigCmd + " && " + UploadZarrTarCmd  + " && "+ DelZarrTarCmd, shell=True, executable='/bin/bash')
+        
         # Run commands to upload vtk to drive
-        subprocess.Popen(TarVTKCmd + " && " + UploadVTKTarCmd + " && " + DelVTKTarCmd + " && " + DelVTKOrigCmd, shell=True, executable='/bin/bash')
+        subprocess.Popen(TarVTKCmd + " && " + DelVTKOrigCmd + " && " + UploadVTKTarCmd + " && " + DelVTKTarCmd, shell=True, executable='/bin/bash')
 
     def RecordToZarr(self, outputmode="structured"):
         '''Records a single data point to a zarr file'''
@@ -229,7 +229,7 @@ class DataRecorder():
         # dict containing the data streams themselves
         self.streamobj = dict.fromkeys(self.dataStreams)
         
-        # Create zarr arrays for each data stream with length 1
+        # Create zarr datasets for each data stream with length 1
         self.out_root = z.group(outputFolderPath)
         for stream in self.dataStreams:
             try:
@@ -241,7 +241,7 @@ class DataRecorder():
                 self.streamobj[stream] = self.out_root.create_dataset(stream, shape=(1, self.dimsdict[stream]), dtype=self.typedict[stream], overwrite=True)
                 #raise Exception("Error! Base directory not empty!"
         
-        # Nodal locations
+        # Zarr datasets containing elements, node locations
         self.nodelocs = self.out_root.create_dataset("node_coords", shape=(nnodes, 3), dtype='f8', overwrite=True)
         self.ele = self.out_root.create_dataset("elements", shape=nele, dtype='i8', overwrite=True)
 
