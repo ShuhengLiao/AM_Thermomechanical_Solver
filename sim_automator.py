@@ -12,7 +12,7 @@ import time
 importlib.reload(run_sim)
 
 # Verify GPU status with nvidia-smi prior to activating GPU
-# todo: configure 
+# todo: configure to use more than one GPU at once
 MAGI_0 = cp.cuda.Device(0)
 MELCHIOR_1 = cp.cuda.Device(1)
 BALTHASAR_2 = cp.cuda.Device(2)
@@ -25,11 +25,11 @@ sim_dir_name = "thin_wall"
 rclone_stream = "ONEDRIVE-NU:"
 dest_dir = os.path.join("DED-DT - IDEAS Lab", "08-Technical", "data-gamma")
 
-num_LP = 5
+num_LP = 100
 with MELCHIOR_1.use():
     for itr in range(0, num_LP):
         # Laser file iteration
-        laser_file = "LP_" + str(itr+1)
+        laser_file = "NLP_" + str(itr+1)
         # Create simulation object
         sim_itr = rs.FeaModel(geom_dir=sim_dir_name, laserpowerfile=laser_file, outputstep = 1, outputVtkFiles=True)
         # Run simulation

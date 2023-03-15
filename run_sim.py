@@ -119,6 +119,8 @@ class FeaModel():
         UploadZarrTarCmd = 'rclone copy "' + self.geom_dir + '_' + self.laserpowerfile + '_zarr' + '.tar.gz" "' + new_outpath + '" -v'
         # Delete zarr targz
         DelZarrTarCmd = 'rm -rf "' + self.geom_dir + '_' + self.laserpowerfile + '_zarr' + '.tar.gz"'
+        # Delete original data from drive
+        DelZarrOrigCmd = 'rm -rf "' + zarpth + '"'
 
         # Zip vtk
         TarVTKCmd = 'tar -czf "' + self.geom_dir +"_" + self.laserpowerfile + '_vtk' + '.tar.gz" "' + vtkpth + '"'
@@ -126,12 +128,14 @@ class FeaModel():
         UploadVTKTarCmd = 'rclone copy "' + self.geom_dir + '_' + self.laserpowerfile + '_vtk' + '.tar.gz" "' + new_outpath + '" -v'
         # Delete vtk targz
         DelVTKTarCmd = 'rm -rf "' + self.geom_dir + '_' + self.laserpowerfile + '_vtk' +'.tar.gz"'
+        # Delete vtk originals from drive
+        DelVTKOrigCmd = 'rm -rf "' + vtkpth + '"'
+
+        # Run zarr commands subsequently to upload zarr files to drive
+        subprocess.Popen(TarZarrCmd + " && " + UploadZarrTarCmd + " && " + DelZarrTarCmd + " && "+ DelZarrOrigCmd, shell=True, executable='/bin/bash')
 
         # Run commands to upload vtk to drive
-        subprocess.Popen(TarVTKCmd + " && " + UploadVTKTarCmd + " && " + DelVTKTarCmd, shell=True, executable='/bin/bash')
-        # Run zarr commands subsequently to upload zarr files to drive
-        subprocess.Popen(TarZarrCmd + " && " + UploadZarrTarCmd + " && " + DelZarrTarCmd, shell=True, executable='/bin/bash')
-
+        subprocess.Popen(TarVTKCmd + " && " + UploadVTKTarCmd + " && " + DelVTKTarCmd + " && " + DelVTKOrigCmd, shell=True, executable='/bin/bash')
 
     def RecordToZarr(self, outputmode="structured"):
         '''Records a single data point to a zarr file'''
