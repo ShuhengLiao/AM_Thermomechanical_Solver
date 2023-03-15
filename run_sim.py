@@ -11,13 +11,14 @@ import pandas as pd
 import warnings
 # import h5py
 import zarr as z
+import subprocess
 
 # For debugging gamma.py or preprocessor, uncomment
 importlib.reload(sys.modules['includes.gamma'])
 importlib.reload(sys.modules['includes.preprocessor'])
 
 class FeaModel():
-    def __init__(self, geom_dir, laserpowerfile, outputstep = 1, outputVtkFiles = False):
+    def __init__(self, geom_dir, laserpowerfile, outputstep = 1, outputVtkFiles = True):
 
         ## Setting up resources
         # laserpowerfile: profile of laser power w.r.t time
@@ -41,9 +42,12 @@ class FeaModel():
         self.max_itr = len(self.timesteps)
 
         ### Initialization of outputs
-
         # Start datarecorder object to save pointwise data
-        self.zarr_stream = DataRecorder(nnodes=self.domain.nodes.shape[0], outputFolderPath=os.path.join("./zarr_output", self.geom_dir, self.laserpowerfile)+".zarr")
+        self.zarr_stream = DataRecorder(nnodes=self.domain.nodes.shape[0], nele=self.domain.elements.shape[0], outputFolderPath=os.path.join("./zarr_output", self.geom_dir, self.laserpowerfile)+".zarr")
+
+        # Record nodes and nodal locations 
+        self.zarr_stream.nodelocs = self.domain.nodes
+        self.zarr_stream.ele = self.domain.elements
 
         # file_num: .vtk output iteration
         self.file_num = 0
@@ -97,36 +101,38 @@ class FeaModel():
                 self.file_num = self.file_num + 1
                 self.output_time = self.domain.current_time
 
-                # save other data to csv files, for training
-                # unindent to save at every time step.
-                # WARNING: can generate a lot of data in a very short amount of time if unindented!
-                # Ensure the drive this is run on has enough storage
-                #self.OldRecordDataPoint()
-        # Post-simulation tasks here
 
-    # def OldRecordDataPoint(self):
-    #     ''' Record a single datapoint at the current simulation timestep. '''
+    def OneDriveUpload(self, rclone_stream, destination):
+        # Directory of output
+        output_dir = os.path.join(self.geom_dir, self.laserpowerfile)
 
-    #     # Open file stream
-    #     output_obj = DataRecorder(outputFolderPath=os.path.join("./output", self.geom_dir, self.laserpowerfile))
+        ## Uploading
+        # Todo
+        zarpth = os.path.join("./zarr_output", output_dir) + ".zarr"
+        vtkpth = os.path.join("./vtk_files", output_dir)
+        sendpath = os.path.join(rclone_stream, destination)
+        new_outpath = os.path.join(sendpath, output_dir)
 
-    #     # Write outputs to file
-    #     self.heat_solver.laser_loc[0].tofile(output_obj.files["pos_x"], sep=',', format='%.10E')
-    #     self.heat_solver.laser_loc[1].tofile(output_obj.files["pos_y"], sep=',', format='%.10E')
-    #     self.heat_solver.laser_loc[2].tofile(output_obj.files["pos_z"], sep=',', format='%.10E')
-    #     self.heat_solver.q_in.tofile(output_obj.files["laser_power"], sep=',', format='%.10E')
-    #     self.heat_solver.temperature.tofile(output_obj.files["ff_temperature"], sep=',', format='%.10E')
-    #     self.domain.active_nodes.tofile(output_obj.files["active_nodes"], sep=',', format='%d')
-    #     np.array([self.domain.current_time], dtype=np.float64).tofile(output_obj.files["timestamp"], sep=',', format='%.10E')
+        # Zip .zarr file
+        TarZarrCmd = 'tar -czf "' + self.geom_dir +"_" + self.laserpowerfile + '_zarr' + '.tar.gz" "' + zarpth + '"'
+        # Upload zarr targz
+        UploadZarrTarCmd = 'rclone copy "' + self.geom_dir + '_' + self.laserpowerfile + '_zarr' + '.tar.gz" "' + new_outpath + '" -v'
+        # Delete zarr targz
+        DelZarrTarCmd = 'rm -rf "' + self.geom_dir + '_' + self.laserpowerfile + '_zarr' + '.tar.gz"'
 
-    #     # Write line breaks
-    #     for datastream in output_obj.files:
-    #         output_obj.files[datastream].write("\r\n")
+        # Zip vtk
+        TarVTKCmd = 'tar -czf "' + self.geom_dir +"_" + self.laserpowerfile + '_vtk' + '.tar.gz" "' + vtkpth + '"'
+        # Upload vtk targz
+        UploadVTKTarCmd = 'rclone copy "' + self.geom_dir + '_' + self.laserpowerfile + '_vtk' + '.tar.gz" "' + new_outpath + '" -v'
+        # Delete vtk targz
+        DelVTKTarCmd = 'rm -rf "' + self.geom_dir + '_' + self.laserpowerfile + '_vtk' +'.tar.gz"'
 
-    #     # Delete output object, closing file streams
-    #     del output_obj
-    #     pass
-    
+        # Run commands to upload vtk to drive
+        subprocess.Popen(TarVTKCmd + " && " + UploadVTKTarCmd + " && " + DelVTKTarCmd, shell=True, executable='/bin/bash')
+        # Run zarr commands subsequently to upload zarr files to drive
+        subprocess.Popen(TarZarrCmd + " && " + UploadZarrTarCmd + " && " + DelZarrTarCmd, shell=True, executable='/bin/bash')
+
+
     def RecordToZarr(self, outputmode="structured"):
         '''Records a single data point to a zarr file'''
         timestep = np.expand_dims(np.expand_dims(self.domain.current_time, axis=0), axis=1)
@@ -136,6 +142,7 @@ class FeaModel():
         laser_power = np.expand_dims(np.expand_dims(self.heat_solver.q_in, axis=0), axis=1)
         active_nodes = np.expand_dims(self.domain.active_nodes.astype('i1'), axis=0)
         ff_temperature = np.expand_dims(self.heat_solver.temperature.get(), axis=0)
+        active_elements = np.expand_dims(self.domain.active_elements.astype('i1'), axis=0)
 
         if outputmode == "structured":
             # For each of the data streams, append the data for the current time step
@@ -147,6 +154,7 @@ class FeaModel():
             self.zarr_stream.streamobj["laser_power"].append(laser_power, axis=0)
             self.zarr_stream.streamobj["active_nodes"].append(active_nodes, axis=0)
             self.zarr_stream.streamobj["ff_temperature"].append(ff_temperature, axis=0)
+            self.zarr_stream.streamobj["active_elements"].append(active_elements, axis=0)
         elif outputmode == "bulked":
             new_row = np.zeros([1, (5+self.domain.nodes.shape[0])])
             new_row[0, 1] = timestep[0, 0]
@@ -178,12 +186,12 @@ class FeaModel():
 class DataRecorder():
     def __init__(self,
         nnodes,
+        nele,
         outputFolderPath = "ouput",
         outputmode = "structured"
     ):
         
         # Location to save file
-
         if outputmode == "structured":
             self.outputFolderPath = outputFolderPath
             # Types of data being captured
@@ -194,18 +202,20 @@ class DataRecorder():
                 "pos_z",
                 "laser_power",
                 "active_nodes",
-                "ff_temperature"
+                "ff_temperature",
+                "active_elements"
             ]
+
             # Dimension of one time-step of each data stream
-            dims = [1, 1, 1, 1, 1, nnodes, nnodes]
+            dims = [1, 1, 1, 1, 1, nnodes, nnodes, nele]
             # Type of each data stream
-            types = ['f8', 'f8', 'f8', 'f8', 'f8', 'i1', 'f8']
+            types = ['f8', 'f8', 'f8', 'f8', 'f8', 'i1', 'f8', 'i1']
 
         elif outputmode == "bulked":
             self.outputFolderPath = outputFolderPath
-            self.dataStreams = ["all_floats", "active_nodes"]
-            dims = [5 + nnodes, nnodes]
-            types = ['f8', 'i1']
+            self.dataStreams = ["all_floats", "active_nodes", "active_elements"]
+            dims = [5 + nnodes, nnodes, nele]
+            types = ['f8', 'i1', 'i1']
         else:
             raise Exception("Error! Invalid zarr output type!")
 
@@ -224,9 +234,13 @@ class DataRecorder():
                 # Fails if directory already exists
                 # todo: ideally, this will ask the user if they want to overwrite the output files
                 # and do so with confirmation
-                raise Exception("Error! Base directory not empty!")
+                self.streamobj[stream] = self.out_root.create_dataset(stream, shape=(1, self.dimsdict[stream]), dtype=self.typedict[stream], overwrite=True)
+                #raise Exception("Error! Base directory not empty!"
+        
+        # Nodal locations
+        self.nodelocs = self.out_root.create_dataset("node_coords", shape=(nnodes, 3), dtype='f8', overwrite=True)
+        self.ele = self.out_root.create_dataset("elements", shape=nele, dtype='i8', overwrite=True)
 
 if __name__ == "__main__":
     model = FeaModel('thin_wall', 'LP_1')
-    print(model.domain.end_time)
-    #model.run()
+    model.run()
