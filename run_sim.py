@@ -12,13 +12,15 @@ import warnings
 # import h5py
 import zarr as z
 import subprocess
+import time
+import datetime
 
 # For debugging gamma.py or preprocessor, uncomment
 importlib.reload(sys.modules['includes.gamma'])
 importlib.reload(sys.modules['includes.preprocessor'])
 
 class FeaModel():
-    def __init__(self, geom_dir, laserpowerfile, outputstep = 1, outputVtkFiles = True):
+    def __init__(self, geom_dir, laserpowerfile, VtkOutputStep=1, ZarrOutputStep=0.02, outputVtkFiles=True):
 
         ## Setting up resources
         # laserpowerfile: profile of laser power w.r.t time
@@ -52,9 +54,13 @@ class FeaModel():
         # file_num: .vtk output iteration
         self.file_num = 0
 
-        # output_times: vector containing expected times at which a vtk file is outputted.
-        self.output_step = outputstep  # Time step between iterations
-        self.output_times = np.linspace(0, self.output_step*(self.max_itr), (self.max_itr+1))
+        # VTK output_times: vector containing expected times at which a vtk file is outputted.
+        self.VtkOutputStep = VtkOutputStep  # Time step between iterations
+        self.VtkOutputTimes = np.linspace(0, self.VtkOutputStep*(self.max_itr), (self.max_itr+1))
+
+        # Zarr output steps: vector containing expected times at which a zarr file is generated
+        self.ZarrOutputStep = ZarrOutputStep
+        self.ZarrOutputTimes = np.linspace(0, self.ZarrOutputStep*(self.max_itr), (self.max_itr+1))
 
         # Save initial state as vtk file
         self.outputVtkFiles = outputVtkFiles
@@ -81,12 +87,13 @@ class FeaModel():
             self.heat_solver.time_integration()
 
             # Save timestamped zarr file
-            self.RecordToZarr()
+            if self.domain.current_time >= (self.ZarrOutputTimes[self.file_num] - (self.domain.dt/10)):
+                self.RecordToZarr()
 
             # save .vtk file if the current time is greater than an expected output time
-            # offset by dt/10 due to floating point error
+            # offset time by dt/10 due to floating point error
             # honestly this whole thing should really be done with integers
-            if self.domain.current_time >= (self.output_times[self.file_num] - (self.domain.dt/10)):
+            if self.domain.current_time >= (self.VtkOutputTimes[self.file_num] - (self.domain.dt/10)):
 
                 # Print time and completion status to terminal
                 print("Current time:  {} s, Percentage done:  {}%".format(
@@ -159,6 +166,7 @@ class FeaModel():
             self.zarr_stream.streamobj["active_nodes"].append(active_nodes, axis=0)
             self.zarr_stream.streamobj["ff_temperature"].append(ff_temperature, axis=0)
             self.zarr_stream.streamobj["active_elements"].append(active_elements, axis=0)
+
         elif outputmode == "bulked":
             new_row = np.zeros([1, (5+self.domain.nodes.shape[0])])
             new_row[0, 1] = timestep[0, 0]
@@ -169,6 +177,7 @@ class FeaModel():
             new_row[0, 6:(6+self.domain.nodes.shape[0])] = laser_power[0]
             self.zarr_stream.streamobj["all_floats"].append(new_row, axis=0)
             self.zarr_stream.streamobj["active_nodes"].append(active_nodes, axis=0)
+
         else:
             raise Exception("Error! Invalid zarr output type!")
     
@@ -246,5 +255,15 @@ class DataRecorder():
         self.ele = self.out_root.create_dataset("elements", shape=nele, dtype='i8', overwrite=True)
 
 if __name__ == "__main__":
-    model = FeaModel('thin_wall', 'LP_1')
+    tic = time.perf_counter()
+    model = FeaModel('thin_wall', 'LP_1', ZarrOutputStep=0.02)
+    toc1 = time.perf_counter()
     model.run()
+    toc2 = time.perf_counter()
+    print(f"Time to Simulate: {toc2-toc1:0.4f}")
+    print(f"Total time to run: {toc2-tic:0.4f}")
+
+    simtime = toc2-toc1
+    projectedtime = (model.domain.end_time/12.854) * simtime
+
+    print(f"End Time: {projectedtime:0.4f}")

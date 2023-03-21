@@ -7,17 +7,27 @@ import cupy as cp
 import run_sim
 import pandas as pd
 import run_sim as rs
-import time
-
+from multiprocessing import Process
 importlib.reload(run_sim)
 
-# Verify GPU status with nvidia-smi prior to activating GPU
-# todo: configure to use more than one GPU at once
-MAGI_0 = cp.cuda.Device(0)
-MELCHIOR_1 = cp.cuda.Device(1)
-BALTHASAR_2 = cp.cuda.Device(2)
-CASPAR_3 = cp.cuda.Device(3)
+def CallRunSim(GPUse, SimSet):
+    with cp.cuda.Device(GPUse):
+        cp.cuda.Device(GPUse).use()
+        for itr in range(0, len(SimSet)):
+            # Laser file iteration
+            laser_file = prefix + str(SimSet[itr]+1)
+            # Create simulation object
+            sim_itr = rs.FeaModel(geom_dir=sim_dir_name,
+                                laserpowerfile=laser_file,
+                                VtkOutputStep = 1,
+                                ZarrOutputStep = 0.02,
+                                outputVtkFiles=True)
+            # Run simulation
+            sim_itr.run()
+            # upload output files
+            sim_itr.OneDriveUpload(rclone_stream=rclone_stream, destination=dest_dir)
 
+# Verify GPU status with nvidia-smi prior to activating GPU
 # Name of geometry to draw data from
 sim_dir_name = "thin_wall"
 
@@ -25,14 +35,24 @@ sim_dir_name = "thin_wall"
 rclone_stream = "ONEDRIVE-NU:"
 dest_dir = os.path.join("DED-DT - IDEAS Lab", "08-Technical", "data-gamma")
 
-num_LP = 100
-with MELCHIOR_1.use():
-    for itr in range(0, num_LP):
-        # Laser file iteration
-        laser_file = "NLP_" + str(itr+1)
-        # Create simulation object
-        sim_itr = rs.FeaModel(geom_dir=sim_dir_name, laserpowerfile=laser_file, outputstep = 1, outputVtkFiles=True)
-        # Run simulation
-        sim_itr.run()
-        # upload output files
-        sim_itr.OneDriveUpload(rclone_stream=rclone_stream, destination=dest_dir)
+# prefix for laser power signals
+prefix = "NLP_"
+
+# Simulations to run
+sim_list = []
+sim_list.append(range(0, 25))
+sim_list.append(range(25, 50))
+sim_list.append(range(50, 75))
+sim_list.append(range(75, 100))
+NumGPUs = len(sim_list)
+
+# GPU assignments
+GPULIST = np.array([0, 0, 1, 1], dtype=int)
+
+if len(GPULIST) < NumGPUs:
+   Exception("Error! More GPUs requested than assigned.")
+
+processes = []
+for jtr in range(0, NumGPUs):
+    processes.append(Process(target=CallRunSim, args=(GPULIST[jtr], sim_list[jtr])))
+    processes[jtr].start()
