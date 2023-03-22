@@ -136,8 +136,6 @@ def createSurf(elements,nodes,element_birth,connect_surf,surfaces,surface_birth,
     
     return surface_num
 
-
-
 def load_toolpath(filename):
     toolpath_raw=pd.read_table(filename, delimiter=r"\s+",header=None, names=['time','x','y','z','state'])
     return toolpath_raw.to_numpy()
@@ -198,7 +196,6 @@ def shape_fnc_surface(parCoord):
     N = 0.25 * np.array([(1-chsi)*(1-eta), (1+chsi)*(1-eta), (1+chsi)*(1+eta), (1-chsi)*(1+eta)])
     return N
 
-
 def derivate_shape_fnc_surface(parCoord):
     oneMinusChsi = 1.0 - parCoord[0]
     onePlusChsi  = 1.0 + parCoord[0]
@@ -208,12 +205,9 @@ def derivate_shape_fnc_surface(parCoord):
                          [-oneMinusChsi, -onePlusChsi, onePlusChsi, oneMinusChsi]])
     return B
 
-
-
-
 class domain_mgr():
-    def __init__(self,filename,sort_birth = True, toolpathdir='toolpath.crs'):
-        self.toolpathdir = toolpathdir
+    def __init__(self,filename,sort_birth = True, toolpathdir='toolpath.crs', verbose=True):
+        self.toolpath_file = toolpathdir
         self.filename = filename
         self.sort_birth = sort_birth
         parCoords_element = np.array([[-1.0,-1.0,-1.0],[1.0,-1.0,-1.0],[1.0, 1.0,-1.0],[-1.0, 1.0,-1.0],
@@ -225,7 +219,7 @@ class domain_mgr():
         self.Nip_sur = cp.array([shape_fnc_surface(parCoord) for parCoord in parCoords_surface])
         self.Bip_sur = cp.array([derivate_shape_fnc_surface(parCoord) for parCoord in parCoords_surface])
         
-        self.init_domain()
+        self.init_domain(verbose=verbose)
         self.current_time = 0
         self.update_birth()
         self.get_ele_J()
@@ -444,39 +438,42 @@ class domain_mgr():
         self.mat_thermal = mat_thermal
         self.thermal_TD = thermal_TD
         
-    def init_domain(self):
+    def init_domain(self, verbose):
         # reading input files
         start = time.time()
         self.load_file()
         end = time.time()
-        print("Time of reading input files: {}".format(end-start))
+        readtime = end-start
         
         # calculating critical timestep
-        self.defaultFac = 0.8
+        self.defaultFac = 0.75
         start = time.time()
         self.get_timestep()
         end = time.time()
-        print("Time of calculating critical timestep: {}".format(end-start))
+        calctimesteptime = end-start
 
         # reading and interpolating toolpath
         start = time.time()
-        toolpath_raw = load_toolpath(filename = self.toolpathdir)
+        toolpath_raw = load_toolpath(filename = self.toolpath_file)
         toolpath = get_toolpath(toolpath_raw,self.dt,self.end_time)
         end = time.time()
-        print("Time of reading and interpolating toolpath: {}".format(end-start))
+        interptoolpathtime = end-start
         self.toolpath = cp.asarray(toolpath)
 
-        print("Number of nodes: {}".format(len(self.nodes)))
-        print("Number of elements: {}".format(len(self.elements)))
-        print("Number of time-steps: {}".format(len(self.toolpath)))
-                
         # generating surface
         start = time.time()
         self.generate_surf()
         end = time.time()
-        print("Time of generating surface: {}".format(end-start))
-        
+        surftime = end-start
 
+        if verbose:
+            print("Time of reading input files: {}".format(readtime))
+            print("Time of calculating critical timestep: {}".format(calctimesteptime))
+            print("Time of reading and interpolating toolpath: {}".format(interptoolpathtime))
+            print("Number of nodes: {}".format(len(self.nodes)))
+            print("Number of elements: {}".format(len(self.elements)))
+            print("Number of time-steps: {}".format(len(self.toolpath)))
+            print("Time of generating surface: {}".format(surftime))
         
     def generate_surf(self):
         elements = self.elements

@@ -14,15 +14,19 @@ import zarr as z
 import subprocess
 import time
 import datetime
+import numba
 
 # For debugging gamma.py or preprocessor, uncomment
 importlib.reload(sys.modules['includes.gamma'])
 importlib.reload(sys.modules['includes.preprocessor'])
 
 class FeaModel():
-    def __init__(self, geom_dir, laserpowerfile, VtkOutputStep=1, ZarrOutputStep=0.02, outputVtkFiles=True):
+    def __init__(self, geom_dir, laserpowerfile, VtkOutputStep=1, ZarrOutputStep=0.02, outputVtkFiles=True, verbose=True):
 
         ## Setting up resources
+        # output
+        self.verbose = verbose
+
         # laserpowerfile: profile of laser power w.r.t time
         self.laserpowerfile = laserpowerfile
 
@@ -34,7 +38,7 @@ class FeaModel():
         self.toolpath_file = os.path.join("geometries-toolpaths", self.geom_dir, "toolpath.crs")
 
         # Start heat_solver and simulation domain
-        self.domain = domain_mgr(filename=self.geometry_file, toolpathdir=self.toolpath_file)
+        self.domain = domain_mgr(filename=self.geometry_file, toolpathdir=self.toolpath_file, verbose=self.verbose)
         self.heat_solver = heat_solve_mgr(self.domain)
         
         # Read laser power input and timestep-sync file
@@ -51,8 +55,10 @@ class FeaModel():
         self.zarr_stream.nodelocs = self.domain.nodes
         self.zarr_stream.ele = self.domain.elements
 
-        # file_num: .vtk output iteration
-        self.file_num = 0
+        # VtkFileNum: .vtk output iteration
+        # ZarrFileNum
+        self.VtkFileNum = 0
+        self.ZarrFileNum = 0
 
         # VTK output_times: vector containing expected times at which a vtk file is outputted.
         self.VtkOutputStep = VtkOutputStep  # Time step between iterations
@@ -65,9 +71,9 @@ class FeaModel():
         # Save initial state as vtk file
         self.outputVtkFiles = outputVtkFiles
         if self.outputVtkFiles:
-            filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.file_num))
+            filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.VtkFileNum))
             self.save_vtk(filename)
-        self.file_num = self.file_num + 1
+        self.VtkFileNum = self.VtkFileNum + 1
     
     def run(self):
         ''' Run the simulation. '''
@@ -87,25 +93,27 @@ class FeaModel():
             self.heat_solver.time_integration()
 
             # Save timestamped zarr file
-            if self.domain.current_time >= (self.ZarrOutputTimes[self.file_num] - (self.domain.dt/10)):
+            if self.domain.current_time >= (self.ZarrOutputTimes[self.ZarrFileNum] - (self.domain.dt/10)):
+                self.ZarrFileNum = self.ZarrFileNum + 1
                 self.RecordToZarr()
 
             # save .vtk file if the current time is greater than an expected output time
             # offset time by dt/10 due to floating point error
             # honestly this whole thing should really be done with integers
-            if self.domain.current_time >= (self.VtkOutputTimes[self.file_num] - (self.domain.dt/10)):
+            if self.domain.current_time >= (self.VtkOutputTimes[self.VtkFileNum] - (self.domain.dt/10)):
 
                 # Print time and completion status to terminal
-                print("Current time:  {} s, Percentage done:  {}%".format(
-                    self.domain.current_time, 100 * self.domain.current_time / self.domain.end_time))
+                if self.verbose:
+                    print("Current time:  {} s, Percentage done:  {}%".format(
+                        self.domain.current_time, 100 * self.domain.current_time / self.domain.end_time))
                 
                 # vtk file filename and save
                 if self.outputVtkFiles:
-                    filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.file_num))
+                    filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.VtkFileNum))
                     self.save_vtk(filename)
                     
                 # iterate file number
-                self.file_num = self.file_num + 1
+                self.VtkFileNum = self.VtkFileNum + 1
                 self.output_time = self.domain.current_time
 
 
