@@ -45,11 +45,33 @@ class FeaModel():
         inp = pd.read_csv(os.path.join("laser_inputs", self.geom_dir, self.laserpowerfile) + ".csv").to_numpy()
         self.laser_power_seq = inp[:, 0]
         self.timesteps = inp[:, 1]
-        self.max_itr = len(self.timesteps)
+        self.las_max_itr = len(self.timesteps)
+
+        # las_max_itr: length of laser input signal
+        # def_max_itr: time for original simulation to run to completion
+        self.def_max_itr = int(self.domain.end_time/self.domain.dt)
+        self.max_itr = min(self.las_max_itr, self.def_max_itr)
+
+        # VTK output_times: vector containing expected times at which a vtk file is outputted.
+        self.VtkOutputStep = VtkOutputStep  # Time step between iterations
+        self.VtkOutputTimes = np.linspace(0, self.VtkOutputStep*self.max_itr, self.max_itr+1)
+        self.VtkOutputTimes = [x for x in self.VtkOutputTimes if x <= self.domain.end_time]
+        exp_vtk_num = len(self.VtkOutputTimes)
+
+        # Zarr output steps: vector containing expected times at which a zarr file is generated
+        self.ZarrOutputStep = ZarrOutputStep
+        self.ZarrOutputTimes = np.linspace(0, self.ZarrOutputStep*self.max_itr, self.max_itr+1)
+        self.ZarrOutputTimes = [x for x in self.ZarrOutputTimes if x <= self.domain.end_time]
+        exp_zarr_len = len(self.ZarrOutputTimes)
 
         ### Initialization of outputs
         # Start datarecorder object to save pointwise data
-        self.zarr_stream = DataRecorder(nnodes=self.domain.nodes.shape[0], nele=self.domain.elements.shape[0], outputFolderPath=os.path.join("./zarr_output", self.geom_dir, self.laserpowerfile)+".zarr")
+        self.zarr_stream = DataRecorder(nnodes=self.domain.nodes.shape[0],
+                                        nele=self.domain.elements.shape[0],
+                                        outputFolderPath=(os.path.join("./zarr_output",
+                                                                      self.geom_dir,
+                                                                      self.laserpowerfile) +".zarr"),
+                                        ExpOutputSteps=exp_zarr_len)
 
         # Record nodes and nodal locations 
         self.zarr_stream.nodelocs = self.domain.nodes
@@ -59,14 +81,6 @@ class FeaModel():
         # ZarrFileNum
         self.VtkFileNum = 0
         self.ZarrFileNum = 0
-
-        # VTK output_times: vector containing expected times at which a vtk file is outputted.
-        self.VtkOutputStep = VtkOutputStep  # Time step between iterations
-        self.VtkOutputTimes = np.linspace(0, self.VtkOutputStep*(self.max_itr), (self.max_itr+1))
-
-        # Zarr output steps: vector containing expected times at which a zarr file is generated
-        self.ZarrOutputStep = ZarrOutputStep
-        self.ZarrOutputTimes = np.linspace(0, self.ZarrOutputStep*(self.max_itr), (self.max_itr+1))
 
         # Save initial state as vtk file
         self.outputVtkFiles = outputVtkFiles
@@ -115,9 +129,13 @@ class FeaModel():
                 # iterate file number
                 self.VtkFileNum = self.VtkFileNum + 1
                 self.output_time = self.domain.current_time
+        # Post Simulation Tasks
+        # Write to disk
 
+        #StoreLoc = z.DirectoryStore(outputFolderPath)
+        #self.zarr_stream.out_root.store(StoreLoc)
 
-    def OneDriveUpload(self, rclone_stream, destination):
+    def OneDriveUpload(self, rclone_stream, destination, BashLoc):
         # Directory of output
         output_dir = os.path.join(self.geom_dir, self.laserpowerfile)
 
@@ -147,33 +165,34 @@ class FeaModel():
         DelVTKOrigCmd = 'rm -rf "' + vtkpth + '"'
 
         # Run zarr commands subsequently to upload zarr files to drive
-        subprocess.Popen(TarZarrCmd + " && " + DelZarrOrigCmd + " && " + UploadZarrTarCmd  + " && "+ DelZarrTarCmd, shell=True, executable='/bin/bash')
+        subprocess.Popen(TarZarrCmd + " && " + DelZarrOrigCmd + " && " + UploadZarrTarCmd  + " && "+ DelZarrTarCmd, shell=True, executable=BashLoc)
         
         # Run commands to upload vtk to drive
-        subprocess.Popen(TarVTKCmd + " && " + DelVTKOrigCmd + " && " + UploadVTKTarCmd + " && " + DelVTKTarCmd, shell=True, executable='/bin/bash')
+        subprocess.Popen(TarVTKCmd + " && " + DelVTKOrigCmd + " && " + UploadVTKTarCmd + " && " + DelVTKTarCmd, shell=True, executable=BashLoc)
 
     def RecordToZarr(self, outputmode="structured"):
         '''Records a single data point to a zarr file'''
-        timestep = np.expand_dims(np.expand_dims(self.domain.current_time, axis=0), axis=1)
-        pos_x = np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[0].get(), axis=0), axis=1)
-        pos_y = np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[1].get(), axis=0), axis=1)
-        pos_z = np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[2].get(), axis=0), axis=1)
-        laser_power = np.expand_dims(np.expand_dims(self.heat_solver.q_in, axis=0), axis=1)
-        active_nodes = np.expand_dims(self.domain.active_nodes.astype('i1'), axis=0)
-        ff_temperature = np.expand_dims(self.heat_solver.temperature.get(), axis=0)
-        active_elements = np.expand_dims(self.domain.active_elements.astype('i1'), axis=0)
+
+        timestep = np.expand_dims(self.domain.current_time, axis=0)
+        pos_x = np.expand_dims(self.heat_solver.laser_loc[0].get(), axis=0)
+        pos_y = np.expand_dims(self.heat_solver.laser_loc[1].get(), axis=0)
+        pos_z = np.expand_dims(self.heat_solver.laser_loc[2].get(), axis=0)
+        laser_power = np.expand_dims(self.heat_solver.q_in, axis=0)
+        active_nodes = self.domain.active_nodes.astype('i1')
+        ff_temperature = self.heat_solver.temperature.get()
+        active_elements = self.domain.active_elements.astype('i1')
 
         if outputmode == "structured":
             # For each of the data streams, append the data for the current time step
             # expanding dimensions as needed to match
-            self.zarr_stream.streamobj["timestamp"].append(timestep, axis=0)
-            self.zarr_stream.streamobj["pos_x"].append(pos_x, axis=0)
-            self.zarr_stream.streamobj["pos_y"].append(pos_y, axis=0)
-            self.zarr_stream.streamobj["pos_z"].append(pos_z, axis=0)
-            self.zarr_stream.streamobj["laser_power"].append(laser_power, axis=0)
-            self.zarr_stream.streamobj["active_nodes"].append(active_nodes, axis=0)
-            self.zarr_stream.streamobj["ff_temperature"].append(ff_temperature, axis=0)
-            self.zarr_stream.streamobj["active_elements"].append(active_elements, axis=0)
+            self.zarr_stream.streamobj["timestamp"][self.ZarrFileNum] = timestep
+            self.zarr_stream.streamobj["pos_x"][self.ZarrFileNum] = pos_x
+            self.zarr_stream.streamobj["pos_y"][self.ZarrFileNum] = pos_y
+            self.zarr_stream.streamobj["pos_z"][self.ZarrFileNum] = pos_z
+            self.zarr_stream.streamobj["laser_power"][self.ZarrFileNum] = laser_power
+            self.zarr_stream.streamobj["active_nodes"][self.ZarrFileNum] = active_nodes
+            self.zarr_stream.streamobj["ff_temperature"][self.ZarrFileNum] = ff_temperature
+            self.zarr_stream.streamobj["active_elements"][self.ZarrFileNum] = active_elements
 
         elif outputmode == "bulked":
             new_row = np.zeros([1, (5+self.domain.nodes.shape[0])])
@@ -208,7 +227,8 @@ class DataRecorder():
     def __init__(self,
         nnodes,
         nele,
-        outputFolderPath = "ouput",
+        ExpOutputSteps,
+        outputFolderPath,
         outputmode = "structured"
     ):
         
@@ -247,15 +267,22 @@ class DataRecorder():
         self.streamobj = dict.fromkeys(self.dataStreams)
         
         # Create zarr datasets for each data stream with length 1
-        self.out_root = z.group(outputFolderPath)
+        self.out_root = z.group(self.outputFolderPath)
         for stream in self.dataStreams:
             try:
-                self.streamobj[stream] = self.out_root.create_dataset(stream, shape=(1, self.dimsdict[stream]), dtype=self.typedict[stream])
+                self.streamobj[stream] = self.out_root.create_dataset(stream,
+                                                                      shape=(ExpOutputSteps, self.dimsdict[stream]),
+                                                                      chunks=(1, self.dimsdict[stream]),
+                                                                      dtype=self.typedict[stream])
             except:
                 # Fails if directory already exists
                 # todo: ideally, this will ask the user if they want to overwrite the output files
                 # and do so with confirmation
-                self.streamobj[stream] = self.out_root.create_dataset(stream, shape=(1, self.dimsdict[stream]), dtype=self.typedict[stream], overwrite=True)
+                self.streamobj[stream] = self.out_root.create_dataset(stream,
+                                                                      shape=(ExpOutputSteps, self.dimsdict[stream]),
+                                                                      chunks=(1, self.dimsdict[stream]),
+                                                                      dtype=self.typedict[stream],
+                                                                      overwrite=True)
                 #raise Exception("Error! Base directory not empty!"
         
         # Zarr datasets containing elements, node locations
@@ -264,7 +291,7 @@ class DataRecorder():
 
 if __name__ == "__main__":
     tic = time.perf_counter()
-    model = FeaModel('thin_wall', 'LP_1', ZarrOutputStep=0.02)
+    model = FeaModel('thin_wall', 'LP_1', ZarrOutputStep=0.2)
     toc1 = time.perf_counter()
     model.run()
     toc2 = time.perf_counter()
