@@ -220,7 +220,7 @@ class domain_mgr():
         self.Bip_sur = cp.array([derivate_shape_fnc_surface(parCoord) for parCoord in parCoords_surface])
         
         self.init_domain(verbose=verbose)
-        self.current_time = 0
+        self.current_sim_time = 0
         self.update_birth()
         self.get_ele_J()
         self.get_surf_ip_pos_and_J()
@@ -327,7 +327,7 @@ class domain_mgr():
                 elif line.split()[0] == '*CONTROL_TERMINATION':
                     line = next(f)
                     line = next(f)
-                    self.end_time = float(line.split()[0])
+                    self.end_sim_time = float(line.split()[0])
 
                 elif line.split()[0] == '*DATABASE_NODOUT':
                     line = next(f)
@@ -455,7 +455,7 @@ class domain_mgr():
         # reading and interpolating toolpath
         start = time.time()
         toolpath_raw = load_toolpath(filename = self.toolpath_file)
-        toolpath = get_toolpath(toolpath_raw,self.dt,self.end_time)
+        toolpath = get_toolpath(toolpath_raw,self.dt,self.end_sim_time)
         end = time.time()
         interptoolpathtime = end-start
         self.toolpath = cp.asarray(toolpath)
@@ -514,9 +514,9 @@ class domain_mgr():
 
 
     def update_birth(self):
-        self.active_elements = self.element_birth<=self.current_time
-        self.active_nodes = self.node_birth<=self.current_time
-        self.active_surface = (self.surface_birth[:,0]<=self.current_time)*(self.surface_birth[:,1]>self.current_time)
+        self.active_elements = self.element_birth<=self.current_sim_time
+        self.active_nodes = self.node_birth<=self.current_sim_time
+        self.active_surface = (self.surface_birth[:,0]<=self.current_sim_time)*(self.surface_birth[:,1]>self.current_sim_time)
     
     def get_ele_J(self):
         nodes_pos = self.nodes[self.elements]
@@ -739,7 +739,7 @@ class heat_solve_mgr():
             self.temperature[cp.where(domain.nodes[:,2]==-self.height)]=self.ambient
         
         self.current_step += 1
-        domain.current_time += domain.dt
+        domain.current_sim_time += domain.dt
             
 
     

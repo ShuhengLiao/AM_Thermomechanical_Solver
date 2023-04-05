@@ -12,8 +12,7 @@ import time
 importlib.reload(run_sim)
 
 def CallRunSim(GPUse, SimSet, StartWallTime):
-    with cp.cuda.Device(GPUse):
-        cp.cuda.Device(GPUse).use()
+    with cp.cuda.Device(GPUse).use():
         for itr in range(0, len(SimSet)):
             # Laser file iteration
             laser_file = prefix + str(SimSet[itr]+1)
@@ -24,7 +23,7 @@ def CallRunSim(GPUse, SimSet, StartWallTime):
                                 VtkOutputStep = 1,
                                 ZarrOutputStep = 0.02,
                                 outputVtkFiles=True,
-                                verbose=False)
+                                verbose=True)
             
             # Run simulation
             sim_itr.run()
@@ -48,10 +47,10 @@ prefix = "NLP_"
 
 # Simulations to run
 sim_list = []
-sim_list.append(range(0, 25))
-sim_list.append(range(25, 50))
-sim_list.append(range(50, 75))
-sim_list.append(range(75, 100))
+sim_list.append(range(0, 1))
+#sim_list.append(range(29, 50))
+#sim_list.append(range(54, 75))
+#sim_list.append(range(79, 100))
 
 #sim_list.append(range(0, 1))
 #sim_list.append(range(1, 2))

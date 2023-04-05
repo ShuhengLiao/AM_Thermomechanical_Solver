@@ -15,6 +15,7 @@ import subprocess
 import time
 import datetime
 import numba
+import gc
 
 # For debugging gamma.py or preprocessor, uncomment
 importlib.reload(sys.modules['includes.gamma'])
@@ -49,19 +50,19 @@ class FeaModel():
 
         # las_max_itr: length of laser input signal
         # def_max_itr: time for original simulation to run to completion
-        self.def_max_itr = int(self.domain.end_time/self.domain.dt)
+        self.def_max_itr = int(self.domain.end_sim_time/self.domain.dt)
         self.max_itr = min(self.las_max_itr, self.def_max_itr)
 
         # VTK output_times: vector containing expected times at which a vtk file is outputted.
         self.VtkOutputStep = VtkOutputStep  # Time step between iterations
         self.VtkOutputTimes = np.linspace(0, self.VtkOutputStep*self.max_itr, self.max_itr+1)
-        self.VtkOutputTimes = [x for x in self.VtkOutputTimes if x <= self.domain.end_time]
+        self.VtkOutputTimes = [x for x in self.VtkOutputTimes if x <= self.domain.end_sim_time]
         exp_vtk_num = len(self.VtkOutputTimes)
 
         # Zarr output steps: vector containing expected times at which a zarr file is generated
         self.ZarrOutputStep = ZarrOutputStep
         self.ZarrOutputTimes = np.linspace(0, self.ZarrOutputStep*self.max_itr, self.max_itr+1)
-        self.ZarrOutputTimes = [x for x in self.ZarrOutputTimes if x <= self.domain.end_time]
+        self.ZarrOutputTimes = [x for x in self.ZarrOutputTimes if x <= self.domain.end_sim_time]
         exp_zarr_len = len(self.ZarrOutputTimes)
 
         ### Initialization of outputs
@@ -93,12 +94,15 @@ class FeaModel():
         ''' Run the simulation. '''
 
         # Time loop
-        while self.domain.current_time < self.domain.end_time - 1e-8 and self.heat_solver.current_step < self.max_itr :
+        self.tic_start = time.perf_counter()
+        self.tic_jtr = self.tic_start
+        while self.domain.current_sim_time < self.domain.end_sim_time - 1e-8 and self.heat_solver.current_step < self.max_itr :
+
             # Load the current step of the laser profile, and multiply by the absortivity
             self.heat_solver.q_in = self.laser_power_seq[self.heat_solver.current_step]*self.domain.absortivity
             
             # Check that the time steps agree
-            if np.abs(self.domain.current_time - self.timesteps[self.heat_solver.current_step]) / self.domain.dt > 0.01:
+            if np.abs(self.domain.current_sim_time - self.timesteps[self.heat_solver.current_step]) / self.domain.dt > 0.01:
                 # Check if the current domain is correct
                 # In the future, probably best to just check this once at the beginning instead of every iteration
                 warnings.warn("Warning! Time steps of LP input are not well aligned with simulation steps")
@@ -107,20 +111,31 @@ class FeaModel():
             self.heat_solver.time_integration()
 
             # Save timestamped zarr file
-            if self.domain.current_time >= (self.ZarrOutputTimes[self.ZarrFileNum] - (self.domain.dt/10)):
+            if self.domain.current_sim_time >= (self.ZarrOutputTimes[self.ZarrFileNum] - (self.domain.dt/10)):
+
+                # Garbage Collect
+                mempool = cp.get_default_memory_pool()
+                mempool.free_all_blocks()
+
+                # Save output file
                 self.ZarrFileNum = self.ZarrFileNum + 1
                 self.RecordToZarr()
 
             # save .vtk file if the current time is greater than an expected output time
             # offset time by dt/10 due to floating point error
             # honestly this whole thing should really be done with integers
-            if self.domain.current_time >= (self.VtkOutputTimes[self.VtkFileNum] - (self.domain.dt/10)):
-
+            if self.domain.current_sim_time >= (self.VtkOutputTimes[self.VtkFileNum] - (self.domain.dt/10)):
                 # Print time and completion status to terminal
+                self.toc_jtr = time.perf_counter()
+                self.elapsed_wall_time = self.toc_jtr - self.tic_start
+                self.percent_complete = self.domain.current_sim_time/self.domain.end_sim_time
+                self.time_remaining = (self.elapsed_wall_time/self.domain.current_sim_time)*(self.domain.end_sim_time - self.domain.current_sim_time)
                 if self.verbose:
-                    print("Current time:  {} s, Percentage done:  {}%".format(
-                        self.domain.current_time, 100 * self.domain.current_time / self.domain.end_time))
-                
+                    print("Simulation time:  {:0.2} s, Percentage done:  {:0.3}%, Elapsed Time: {:0.3} s".format(
+                        self.domain.current_sim_time, 100*self.domain.current_sim_time/self.domain.end_sim_time, self.elapsed_wall_time))
+                    self.stats_append = np.expand_dims(np.array([self.elapsed_wall_time, self.domain.current_sim_time, self.percent_complete, self.time_remaining]), axis=0)
+                    with open('debug.csv', 'a') as exportfile:
+                        np.savetxt(exportfile, self.stats_append, delimiter=',')
                 # vtk file filename and save
                 if self.outputVtkFiles:
                     filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.VtkFileNum))
@@ -128,12 +143,8 @@ class FeaModel():
                     
                 # iterate file number
                 self.VtkFileNum = self.VtkFileNum + 1
-                self.output_time = self.domain.current_time
-        # Post Simulation Tasks
-        # Write to disk
-
-        #StoreLoc = z.DirectoryStore(outputFolderPath)
-        #self.zarr_stream.out_root.store(StoreLoc)
+                self.output_time = self.domain.current_sim_time
+        
 
     def OneDriveUpload(self, rclone_stream, destination, BashLoc):
         # Directory of output
@@ -173,7 +184,7 @@ class FeaModel():
     def RecordToZarr(self, outputmode="structured"):
         '''Records a single data point to a zarr file'''
 
-        timestep = np.expand_dims(self.domain.current_time, axis=0)
+        timestep = np.expand_dims(self.domain.current_sim_time, axis=0)
         pos_x = np.expand_dims(self.heat_solver.laser_loc[0].get(), axis=0)
         pos_y = np.expand_dims(self.heat_solver.laser_loc[1].get(), axis=0)
         pos_z = np.expand_dims(self.heat_solver.laser_loc[2].get(), axis=0)
@@ -202,8 +213,8 @@ class FeaModel():
             new_row[0, 4] = pos_z[0, 0]
             new_row[0, 5] = laser_power[0, 0]
             new_row[0, 6:(6+self.domain.nodes.shape[0])] = laser_power[0]
-            self.zarr_stream.streamobj["all_floats"].append(new_row, axis=0)
-            self.zarr_stream.streamobj["active_nodes"].append(active_nodes, axis=0)
+            #self.zarr_stream.streamobj["all_floats"].append(new_row, axis=0)
+            #self.zarr_stream.streamobj["active_nodes"].append(active_nodes, axis=0)
 
         else:
             raise Exception("Error! Invalid zarr output type!")
@@ -271,17 +282,19 @@ class DataRecorder():
         for stream in self.dataStreams:
             try:
                 self.streamobj[stream] = self.out_root.create_dataset(stream,
-                                                                      shape=(ExpOutputSteps, self.dimsdict[stream]),
+                                                                      shape=(ExpOutputSteps+1, self.dimsdict[stream]),
                                                                       chunks=(1, self.dimsdict[stream]),
-                                                                      dtype=self.typedict[stream])
+                                                                      dtype=self.typedict[stream],
+                                                                      compressor=None)
             except:
                 # Fails if directory already exists
                 # todo: ideally, this will ask the user if they want to overwrite the output files
                 # and do so with confirmation
                 self.streamobj[stream] = self.out_root.create_dataset(stream,
-                                                                      shape=(ExpOutputSteps, self.dimsdict[stream]),
+                                                                      shape=(ExpOutputSteps+1, self.dimsdict[stream]),
                                                                       chunks=(1, self.dimsdict[stream]),
                                                                       dtype=self.typedict[stream],
+                                                                      compressor=None,
                                                                       overwrite=True)
                 #raise Exception("Error! Base directory not empty!"
         
@@ -299,6 +312,6 @@ if __name__ == "__main__":
     print(f"Total time to run: {toc2-tic:0.4f}")
 
     simtime = toc2-toc1
-    projectedtime = (model.domain.end_time/12.854) * simtime
+    projectedtime = (model.domain.end_sim_time/12.854) * simtime
 
     print(f"End Time: {projectedtime:0.4f}")
