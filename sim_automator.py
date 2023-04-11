@@ -16,7 +16,7 @@ def CallRunSim(GPUse, SimSet, StartWallTime):
 
         # Set unlimited memory for mempool
         mempool = cp.get_default_memory_pool()
-        mempool.set_limit(size=0)
+        mempool.set_limit(size=999999999999)
         for itr in range(0, len(SimSet)):
             # Laser file iteration
             laser_file = prefix + str(SimSet[itr]+1)
@@ -52,9 +52,9 @@ prefix = "NLP_"
 # Simulations to run
 sim_list = []
 sim_list.append(range(0, 25))
-sim_list.append(range(29, 2))
-sim_list.append(range(54, 75))
-sim_list.append(range(79, 100))
+sim_list.append(range(25, 50))
+sim_list.append(range(50, 75))
+sim_list.append(range(75, 100))
 
 #sim_list.append(range(0, 1))
 #sim_list.append(range(1, 2))
@@ -64,7 +64,7 @@ sim_list.append(range(79, 100))
 NumGPUs = len(sim_list)
 
 # GPU assignments
-GPULIST = np.array([0, 0], dtype=int)
+GPULIST = np.array([0, 0, 0, 0], dtype=int)
 
 if len(GPULIST) < NumGPUs:
    Exception("Error! More GPUs requested than assigned.")
