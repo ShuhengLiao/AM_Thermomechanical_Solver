@@ -113,7 +113,7 @@ class FeaModel():
             # Save timestamped zarr file
             if self.domain.current_sim_time >= (self.ZarrOutputTimes[self.ZarrFileNum] - (self.domain.dt/10)):
 
-                # Garbage Collect
+                # Free unused memory blocks
                 mempool = cp.get_default_memory_pool()
                 mempool.free_all_blocks()
 
