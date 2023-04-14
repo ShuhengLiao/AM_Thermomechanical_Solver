@@ -22,8 +22,9 @@ importlib.reload(sys.modules['includes.gamma'])
 importlib.reload(sys.modules['includes.preprocessor'])
 
 class FeaModel():
-    def __init__(self, geom_dir, laserpowerfile, VtkOutputStep=1, ZarrOutputStep=0.02, outputVtkFiles=True, verbose=True):
-
+    def __init__(self, geom_dir, laserpowerfile, VtkOutputStep=1, ZarrOutputStep=0.02, outputVtkFiles=True, verbose=True, CalcNodeSurfDist=False):
+        
+        self.CalcNodeSurfDist = CalcNodeSurfDist
         ## Setting up resources
         # output
         self.verbose = verbose
@@ -120,6 +121,11 @@ class FeaModel():
                 # Save output file
                 self.ZarrFileNum = self.ZarrFileNum + 1
                 self.RecordToZarr()
+
+                #if self.CalcNodeSurfDist:
+                #    for 
+
+
 
             # save .vtk file if the current time is greater than an expected output time
             # offset time by dt/10 due to floating point error
