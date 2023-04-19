@@ -24,6 +24,7 @@ importlib.reload(sys.modules['includes.preprocessor'])
 class FeaModel():
     def __init__(self, geom_dir, laserpowerfile, VtkOutputStep=1, ZarrOutputStep=0.02, outputVtkFiles=True, verbose=True, CalcNodeSurfDist=False):
         
+        self.outputVtkFiles = outputVtkFiles
         self.CalcNodeSurfDist = CalcNodeSurfDist
         ## Setting up resources
         # output
@@ -68,16 +69,24 @@ class FeaModel():
 
         ### Initialization of outputs
         # Start datarecorder object to save pointwise data
-        self.zarr_stream = DataRecorder(nnodes=self.domain.nodes.shape[0],
-                                        nele=self.domain.elements.shape[0],
-                                        outputFolderPath=(os.path.join("./zarr_output",
-                                                                      self.geom_dir,
-                                                                      self.laserpowerfile) +".zarr"),
-                                        ExpOutputSteps=exp_zarr_len)
+        if CalcNodeSurfDist:
+            self.zarr_stream = AuxDataRecorder(nnodes=self.domain.nodes.shape[0],
+                                                outputFolderPath=(os.path.join("./zarr_output",
+                                                                            self.geom_dir,
+                                                                            self.laserpowerfile) +"_aux.zarr"),
+                                                ExpOutputSteps=exp_zarr_len)
+            
+        else:
+            self.zarr_stream = DataRecorder(nnodes=self.domain.nodes.shape[0],
+                                            nele=self.domain.elements.shape[0],
+                                            outputFolderPath=(os.path.join("./zarr_output",
+                                                                        self.geom_dir,
+                                                                        self.laserpowerfile) +".zarr"),
+                                            ExpOutputSteps=exp_zarr_len)
 
-        # Record nodes and nodal locations 
-        self.zarr_stream.nodelocs = self.domain.nodes
-        self.zarr_stream.ele = self.domain.elements
+            # Record nodes and nodal locations 
+            self.zarr_stream.nodelocs = self.domain.nodes
+            self.zarr_stream.ele = self.domain.elements
 
         # VtkFileNum: .vtk output iteration
         # ZarrFileNum
@@ -85,11 +94,14 @@ class FeaModel():
         self.ZarrFileNum = 0
 
         # Save initial state as vtk file
-        self.outputVtkFiles = outputVtkFiles
         if self.outputVtkFiles:
-            filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.VtkFileNum))
-            self.save_vtk(filename)
-        self.VtkFileNum = self.VtkFileNum + 1
+            if CalcNodeSurfDist:
+                filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile+"_aux", 'u{:05d}.vtk'.format(self.VtkFileNum))
+                self.save_dist_vtk
+            else:
+                filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.VtkFileNum))
+                self.save_vtk(filename)
+            self.VtkFileNum = self.VtkFileNum + 1
     
     def run(self):
         ''' Run the simulation. '''
@@ -120,12 +132,7 @@ class FeaModel():
 
                 # Save output file
                 self.ZarrFileNum = self.ZarrFileNum + 1
-                self.RecordToZarr()
-
-                #if self.CalcNodeSurfDist:
-                #    for 
-
-
+                self.RecordTempsZarr()
 
             # save .vtk file if the current time is greater than an expected output time
             # offset time by dt/10 due to floating point error
@@ -138,10 +145,11 @@ class FeaModel():
                 self.time_remaining = (self.elapsed_wall_time/self.domain.current_sim_time)*(self.domain.end_sim_time - self.domain.current_sim_time)
                 if self.verbose:
                     print("Simulation time:  {:0.2} s, Percentage done:  {:0.3}%, Elapsed Time: {:0.3} s".format(
-                        self.domain.current_sim_time, 100*self.domain.current_sim_time/self.domain.end_sim_time, self.elapsed_wall_time))
+                        self.domain.current_sim_time, 100.*self.domain.current_sim_time/self.domain.end_sim_time, self.elapsed_wall_time))
                     self.stats_append = np.expand_dims(np.array([self.elapsed_wall_time, self.domain.current_sim_time, self.percent_complete, self.time_remaining]), axis=0)
                     with open('debug.csv', 'a') as exportfile:
                         np.savetxt(exportfile, self.stats_append, delimiter=',')
+        
                 # vtk file filename and save
                 if self.outputVtkFiles:
                     filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.VtkFileNum))
@@ -150,7 +158,61 @@ class FeaModel():
                 # iterate file number
                 self.VtkFileNum = self.VtkFileNum + 1
                 self.output_time = self.domain.current_sim_time
-        
+
+ 
+    def calc_geom_params(self):
+        ''' Calculate surface distances. '''
+
+        # Time loop
+        self.tic_start = time.perf_counter()
+        self.tic_jtr = self.tic_start
+        self.domain.dt = self.VtkOutputStep
+        while self.domain.current_sim_time < self.domain.end_sim_time - 1e-8 and self.heat_solver.current_step < self.max_itr :
+
+            # Don't run the solver - instead, just move the laser
+            self.heat_solver.update_field_no_integration()
+
+            # Save timestamped zarr file
+            if self.domain.current_sim_time >= (self.ZarrOutputTimes[self.ZarrFileNum] - (self.domain.dt/10)):
+
+                # Free unused memory blocks
+                mempool = cp.get_default_memory_pool()
+                mempool.free_all_blocks()
+
+                # Find closest surfaces
+                self.nodal_surf_distance = self.heat_solver.find_closest_surf_dist()
+
+                # Find laser distance
+                self.nodal_laser_distance = self.heat_solver.find_laser_dist()
+
+                # Save output file
+                self.ZarrFileNum = self.ZarrFileNum + 1
+                self.RecordAuxZarr
+
+            # save .vtk file if the current time is greater than an expected output time
+            # offset time by dt/10 due to floating point error
+            # honestly this whole thing should really be done with integers
+            if self.domain.current_sim_time >= (self.VtkOutputTimes[self.VtkFileNum] - (self.domain.dt/10)):
+                # Print time and completion status to terminal
+                self.toc_jtr = time.perf_counter()
+                self.elapsed_wall_time = self.toc_jtr - self.tic_start
+                self.percent_complete = self.domain.current_sim_time/self.domain.end_sim_time
+                self.time_remaining = (self.elapsed_wall_time/self.domain.current_sim_time)*(self.domain.end_sim_time - self.domain.current_sim_time)
+                if self.verbose:
+                    print("Simulation time:  {:0.2} s, Percentage done:  {:0.3}%, Elapsed Time: {:0.3} s".format(
+                        self.domain.current_sim_time, 100.*self.domain.current_sim_time/self.domain.end_sim_time, self.elapsed_wall_time))
+                    self.stats_append = np.expand_dims(np.array([self.elapsed_wall_time, self.domain.current_sim_time, self.percent_complete, self.time_remaining]), axis=0)
+                    with open('debug.csv', 'a') as exportfile:
+                        np.savetxt(exportfile, self.stats_append, delimiter=',')
+                
+                # vtk file filename and save
+                if self.outputVtkFiles:
+                    filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile+"_aux", 'u{:05d}.vtk'.format(self.VtkFileNum))
+                    self.save_dist_vtk(filename)
+                    
+                # iterate file number
+                self.VtkFileNum = self.VtkFileNum + 1
+                self.output_time = self.domain.current_sim_time
 
     def OneDriveUpload(self, rclone_stream, destination, BashLoc):
         # Directory of output
@@ -187,7 +249,7 @@ class FeaModel():
         # Run commands to upload vtk to drive
         subprocess.Popen(TarVTKCmd + " && " + DelVTKOrigCmd + " && " + UploadVTKTarCmd + " && " + DelVTKTarCmd, shell=True, executable=BashLoc)
 
-    def RecordToZarr(self, outputmode="structured"):
+    def RecordTempsZarr(self, outputmode="structured"):
         '''Records a single data point to a zarr file'''
 
         timestep = np.expand_dims(self.domain.current_sim_time, axis=0)
@@ -225,6 +287,17 @@ class FeaModel():
         else:
             raise Exception("Error! Invalid zarr output type!")
     
+    def RecordAuxZarr(self):
+        '''Records distance information to zarr file'''
+        timestep = np.expand_dims(self.domain.current_sim_time, axis=0)
+        laser_dist = self.nodal_laser_distance
+        surf_dist = self.nodal_surf_distance
+
+        self.zarr_stream.streamobj["timestamp"][self.ZarrFileNum] = timestep
+        self.zarr_stream.streamobj["laser_dist"][self.ZarrFileNum] = laser_dist
+        self.zarr_stream.streamobj["surf_dist"][self.ZarrFileNum] = surf_dist
+
+
     ## DEFINE SAVE VTK FILE FUNCTION
     def save_vtk(self, filename):
         active_elements = self.domain.elements[self.domain.active_elements].tolist()
@@ -238,7 +311,58 @@ class FeaModel():
             active_grid.save(filename)
         except:
             active_grid.save(filename)
+    
+    def save_dist_vtk(self, filename):
+        active_elements = self.domain.elements[self.domain.active_elements].tolist()
+        active_cells = np.array([item for sublist in active_elements for item in [8] + sublist])
+        active_cell_type = np.array([vtk.VTK_HEXAHEDRON] * len(active_elements))
+        points = self.domain.nodes.get()
+        active_grid = pv.UnstructuredGrid(active_cells, active_cell_type, points)
+        active_grid.point_data['surf_dist'] = self.nodal_surf_distance
+        active_grid.point_data['laser_dist'] = self.nodal_laser_distance
+        try:
+            os.makedirs(os.path.dirname(filename))
+            active_grid.save(filename)
+        except:
+            active_grid.save(filename)
 
+class AuxDataRecorder():
+    def __init__(self,
+        nnodes,
+        ExpOutputSteps,
+        outputFolderPath
+    ):
+        
+        # Location to save file
+        self.outputFolderPath = outputFolderPath
+
+        # Types of data being captured
+        self.dataStreams = [
+            "timestamp",
+            "laser_dist",
+            "closest_surf_dist"
+        ]
+
+        # Dimension of one time-step of each data stream
+        dims = [1, 1, nnodes]
+        # Type of each data stream
+        types = ['f8', 'f8', 'f8']
+
+        self.dimsdict = {self.dataStreams[itr]:dims[itr] for itr in range(0, len(self.dataStreams))}
+        self.typedict = {self.dataStreams[itr]:types[itr] for itr in range(0, len(self.dataStreams))}
+
+        # dict containing the data streams themselves
+        self.streamobj = dict.fromkeys(self.dataStreams)
+        
+        # Create zarr datasets for each data stream with length 1
+        self.out_root = z.group(self.outputFolderPath)
+        for stream in self.dataStreams:
+            self.streamobj[stream] = self.out_root.create_dataset(stream,
+                                                                    shape=(ExpOutputSteps+1, self.dimsdict[stream]),
+                                                                    chunks=(1, self.dimsdict[stream]),
+                                                                    dtype=self.typedict[stream],
+                                                                    compressor=None,
+                                                                    overwrite=True)
 
 class DataRecorder():
     def __init__(self,
@@ -309,15 +433,16 @@ class DataRecorder():
         self.ele = self.out_root.create_dataset("elements", shape=nele, dtype='i8', overwrite=True)
 
 if __name__ == "__main__":
-    tic = time.perf_counter()
-    model = FeaModel('thin_wall', 'LP_1', ZarrOutputStep=0.2)
-    toc1 = time.perf_counter()
-    model.run()
-    toc2 = time.perf_counter()
-    print(f"Time to Simulate: {toc2-toc1:0.4f}")
-    print(f"Total time to run: {toc2-tic:0.4f}")
+    with cp.cuda.Device(1).use():
+        tic = time.perf_counter()
+        model = FeaModel('thin_wall', 'LP_1', ZarrOutputStep=0.2, CalcNodeSurfDist=True)
+        toc1 = time.perf_counter()
+        model.calc_geom_params()
+        toc2 = time.perf_counter()
+        print(f"Time to Simulate: {toc2-toc1:0.4f}")
+        print(f"Total time to run: {toc2-tic:0.4f}")
 
-    simtime = toc2-toc1
-    projectedtime = (model.domain.end_sim_time/12.854) * simtime
+        simtime = toc2-toc1
+        projectedtime = (model.domain.end_sim_time/12.854) * simtime
 
-    print(f"End Time: {projectedtime:0.4f}")
+        print(f"End Time: {projectedtime:0.4f}")

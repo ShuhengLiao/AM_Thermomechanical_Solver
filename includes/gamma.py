@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from pyvirtualdisplay import Display
 import vtk
 import pyvista as pv
+import sklearn.metrics as skm
 
 @jit('void(int64[:,:], float64[:],float64[:])',nopython=True)
 def asign_birth_node(elements,element_birth,node_birth):
@@ -220,7 +221,7 @@ class domain_mgr():
         self.Bip_sur = cp.array([derivate_shape_fnc_surface(parCoord) for parCoord in parCoords_surface])
         
         self.init_domain(verbose=verbose)
-        self.current_sim_time = 0
+        self.current_sim_time = 0.
         self.update_birth()
         self.get_ele_J()
         self.get_surf_ip_pos_and_J()
@@ -740,8 +741,57 @@ class heat_solve_mgr():
         
         self.current_step += 1
         domain.current_sim_time += domain.dt
-            
 
+    def update_field_no_integration(self):
+        '''Updates the surfaces but does not use the heat solver'''
+        domain = self.domain
+        domain.update_birth()
+        self.update_cp_cond()
+        #self.update_mvec_stifness()
+
+        self.laser_loc = domain.toolpath[self.current_step,0:3]
+        self.laser_state = domain.toolpath[self.current_step,3]
+        #self.update_fluxes()
+
+        #self.temperature[domain.active_nodes] += domain.dt*self.rhs[domain.active_nodes]/self.m_vec[domain.active_nodes]
+        # modification required
+        #if self.isothermal == 1:
+        #    self.temperature[cp.where(domain.nodes[:,2]==-self.height)]=self.ambient
+        
+        self.current_step += 1
+        domain.current_sim_time += domain.dt
+
+    def find_closest_surf_dist(self):
+        '''Finds the closest distance between every active node, and all surface elements'''
+
+        # Get all nodes
+        all_nodes = self.domain.nodes
+
+        # Take subset of nodes on the active surface
+        surf_nodes = all_nodes[np.unique((self.domain.surface[self.domain.active_surface]).flatten())]
+
+        # Find distance between every node and every node on the surface
+        all_dist = skm.pairwise_distances(all_nodes.get(), surf_nodes.get())
+
+        # Take minimum corresponding to every node
+        closest_surf_dist = all_dist.min(axis=1)
+
+        # Return closest distances
+        return closest_surf_dist
+    
+    def find_laser_dist(self):
+        '''Find the closest distance between every active nodes, and the laser location'''
+
+        # get all nodes
+        all_nodes = self.domain.nodes
+
+        # laser location
+        laser_loc = self.laser_loc
+
+        # Distances
+        laser_dist = skm.pairwise_distances(all_nodes.get(), np.expand_dims(laser_loc.get(), 0))
+        return laser_dist.squeeze()
+        
     
     def calculate_melt(self,solidus):
         domain = self.domain
