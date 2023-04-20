@@ -67,6 +67,7 @@ class FeaModel():
         self.ZarrOutputTimes = [x for x in self.ZarrOutputTimes if x <= self.domain.end_sim_time]
         exp_zarr_len = len(self.ZarrOutputTimes)
 
+
         ### Initialization of outputs
         # Start datarecorder object to save pointwise data
         if CalcNodeSurfDist:
@@ -166,7 +167,7 @@ class FeaModel():
         # Time loop
         self.tic_start = time.perf_counter()
         self.tic_jtr = self.tic_start
-        self.domain.dt = self.VtkOutputStep
+        self.domain.dt = self.ZarrOutputStep
         while self.domain.current_sim_time < self.domain.end_sim_time - 1e-8 and self.heat_solver.current_step < self.max_itr :
 
             # Don't run the solver - instead, just move the laser
@@ -175,19 +176,19 @@ class FeaModel():
             # Save timestamped zarr file
             if self.domain.current_sim_time >= (self.ZarrOutputTimes[self.ZarrFileNum] - (self.domain.dt/10)):
 
+                # Find closest surfaces
+                self.nodal_surf_distance = self.heat_solver.find_closest_surf_dist()
+
                 # Free unused memory blocks
                 mempool = cp.get_default_memory_pool()
                 mempool.free_all_blocks()
-
-                # Find closest surfaces
-                self.nodal_surf_distance = self.heat_solver.find_closest_surf_dist()
 
                 # Find laser distance
                 self.nodal_laser_distance = self.heat_solver.find_laser_dist()
 
                 # Save output file
                 self.ZarrFileNum = self.ZarrFileNum + 1
-                self.RecordAuxZarr
+                self.RecordAuxZarr()
 
             # save .vtk file if the current time is greater than an expected output time
             # offset time by dt/10 due to floating point error
@@ -340,11 +341,11 @@ class AuxDataRecorder():
         self.dataStreams = [
             "timestamp",
             "laser_dist",
-            "closest_surf_dist"
+            "surf_dist"
         ]
 
         # Dimension of one time-step of each data stream
-        dims = [1, 1, nnodes]
+        dims = [1, nnodes, nnodes]
         # Type of each data stream
         types = ['f8', 'f8', 'f8']
 
@@ -433,9 +434,9 @@ class DataRecorder():
         self.ele = self.out_root.create_dataset("elements", shape=nele, dtype='i8', overwrite=True)
 
 if __name__ == "__main__":
-    with cp.cuda.Device(1).use():
+    with cp.cuda.Device(0).use():
         tic = time.perf_counter()
-        model = FeaModel('thin_wall', 'LP_1', ZarrOutputStep=0.2, CalcNodeSurfDist=True)
+        model = FeaModel('thin_wall', 'NLP_1', ZarrOutputStep=0.02, CalcNodeSurfDist=True, outputVtkFiles=False)
         toc1 = time.perf_counter()
         model.calc_geom_params()
         toc2 = time.perf_counter()
