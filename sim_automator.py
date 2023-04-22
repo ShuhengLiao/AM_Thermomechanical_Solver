@@ -26,7 +26,7 @@ def CallRunSim(GPUse, SimSet, StartWallTime):
                                 laserpowerfile=laser_file,
                                 VtkOutputStep = 1,
                                 ZarrOutputStep = 0.02,
-                                outputVtkFiles=True,
+                                outputVtkFiles=False,
                                 verbose=False)
             
             # Run simulation

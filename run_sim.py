@@ -140,6 +140,7 @@ class FeaModel():
                 # Save output file
                 self.ZarrFileNum = self.ZarrFileNum + 1
                 self.RecordTempsZarr(active_nodes, active_nodes_previous)
+                active_nodes_previous = active_nodes
 
             # save .vtk file if the current time is greater than an expected output time
             # offset time by dt/10 due to floating point error
@@ -165,8 +166,6 @@ class FeaModel():
                 # iterate file number
                 self.VtkFileNum = self.VtkFileNum + 1
                 self.output_time = self.domain.current_sim_time
-
-            active_nodes_previous = active_nodes
 
  
     def calc_geom_params(self):
@@ -196,7 +195,7 @@ class FeaModel():
 
                 # Find laser distance
                 self.nodal_laser_distance = self.heat_solver.find_laser_dist()
-
+                
                 # Save output file
                 self.ZarrFileNum = self.ZarrFileNum + 1
                 self.RecordAuxZarr()
@@ -286,7 +285,7 @@ class FeaModel():
             self.zarr_stream.streamobj["ff_dt_active_nodes"][self.ZarrFileNum] = active_nodes
             self.zarr_stream.streamobj["ff_dt_temperature"][self.ZarrFileNum] = ff_temperature
             self.zarr_stream.streamobj["ff_dt_active_elements"][self.ZarrFileNum] = active_elements
-            self.zarr_stream.streamobj["ff_laser_power_birth"][self.ZarrFileNum, activated_nodes] = laser_power[0]
+            self.zarr_stream.streamobj["ff_laser_power_birth"][activated_nodes] = laser_power[0]
 
         elif outputmode == "bulked":
             new_row = np.zeros([1, (5+self.domain.nodes.shape[0])])
@@ -373,12 +372,19 @@ class AuxDataRecorder():
         # Create zarr datasets for each data stream with length 1
         self.out_root = z.group(self.outputFolderPath)
         for stream in self.dataStreams:
-            self.streamobj[stream] = self.out_root.create_dataset(stream,
-                                                                    shape=(ExpOutputSteps+1, self.dimsdict[stream]),
-                                                                    chunks=(1, self.dimsdict[stream]),
-                                                                    dtype=self.typedict[stream],
-                                                                    compressor=None,
-                                                                    overwrite=True)
+            if stream == "ff_timestamp_node_deposition":
+                self.streamobj[stream] = self.out_root.create_dataset(stream,
+                                                                        shape=(self.dimsdict[stream], 1),
+                                                                        dtype=self.typedict[stream],
+                                                                        compressor=None,
+                                                                        overwrite=True)
+            else:
+                self.streamobj[stream] = self.out_root.create_dataset(stream,
+                                                                        shape=(ExpOutputSteps+1, self.dimsdict[stream]),
+                                                                        chunks=(1, self.dimsdict[stream]),
+                                                                        dtype=self.typedict[stream],
+                                                                        compressor=None,
+                                                                        overwrite=True)
 
 class DataRecorder():
     def __init__(self,
@@ -427,23 +433,19 @@ class DataRecorder():
         # Create zarr datasets for each data stream with length 1
         self.out_root = z.group(self.outputFolderPath)
         for stream in self.dataStreams:
-            try:
+            if stream == "ff_laser_power_birth":
                 self.streamobj[stream] = self.out_root.create_dataset(stream,
-                                                                      shape=(ExpOutputSteps+1, self.dimsdict[stream]),
-                                                                      chunks=(1, self.dimsdict[stream]),
-                                                                      dtype=self.typedict[stream],
-                                                                      compressor=None)
-            except:
-                # Fails if directory already exists
-                # todo: ideally, this will ask the user if they want to overwrite the output files
-                # and do so with confirmation
+                                                                        shape=(self.dimsdict[stream], 1),
+                                                                        dtype=self.typedict[stream],
+                                                                        compressor=None,
+                                                                        overwrite=True)
+            else:
                 self.streamobj[stream] = self.out_root.create_dataset(stream,
-                                                                      shape=(ExpOutputSteps+1, self.dimsdict[stream]),
-                                                                      chunks=(1, self.dimsdict[stream]),
-                                                                      dtype=self.typedict[stream],
-                                                                      compressor=None,
-                                                                      overwrite=True)
-                #raise Exception("Error! Base directory not empty!"
+                                                                        shape=(ExpOutputSteps+1, self.dimsdict[stream]),
+                                                                        chunks=(1, self.dimsdict[stream]),
+                                                                        dtype=self.typedict[stream],
+                                                                        compressor=None,
+                                                                        overwrite=True)
         
         # Zarr datasets containing elements, node locations
         self.nodelocs = self.out_root.create_dataset("node_coords", shape=(nnodes, 3), dtype='f8', overwrite=True)
