@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from pyvirtualdisplay import Display
 import vtk
 import pyvista as pv
+import sklearn.metrics as skm
 
 @jit('void(int64[:,:], float64[:],float64[:])',nopython=True)
 def asign_birth_node(elements,element_birth,node_birth):
@@ -136,9 +137,7 @@ def createSurf(elements,nodes,element_birth,connect_surf,surfaces,surface_birth,
     
     return surface_num
 
-
-
-def load_toolpath(filename = 'toolpath.crs'):
+def load_toolpath(filename):
     toolpath_raw=pd.read_table(filename, delimiter=r"\s+",header=None, names=['time','x','y','z','state'])
     return toolpath_raw.to_numpy()
 
@@ -198,7 +197,6 @@ def shape_fnc_surface(parCoord):
     N = 0.25 * np.array([(1-chsi)*(1-eta), (1+chsi)*(1-eta), (1+chsi)*(1+eta), (1-chsi)*(1+eta)])
     return N
 
-
 def derivate_shape_fnc_surface(parCoord):
     oneMinusChsi = 1.0 - parCoord[0]
     onePlusChsi  = 1.0 + parCoord[0]
@@ -208,11 +206,9 @@ def derivate_shape_fnc_surface(parCoord):
                          [-oneMinusChsi, -onePlusChsi, onePlusChsi, oneMinusChsi]])
     return B
 
-
-
-
 class domain_mgr():
-    def __init__(self,filename,sort_birth = True):
+    def __init__(self,filename,sort_birth = True, toolpathdir='toolpath.crs', verbose=True):
+        self.toolpath_file = toolpathdir
         self.filename = filename
         self.sort_birth = sort_birth
         parCoords_element = np.array([[-1.0,-1.0,-1.0],[1.0,-1.0,-1.0],[1.0, 1.0,-1.0],[-1.0, 1.0,-1.0],
@@ -224,8 +220,8 @@ class domain_mgr():
         self.Nip_sur = cp.array([shape_fnc_surface(parCoord) for parCoord in parCoords_surface])
         self.Bip_sur = cp.array([derivate_shape_fnc_surface(parCoord) for parCoord in parCoords_surface])
         
-        self.init_domain()
-        self.current_time = 0
+        self.init_domain(verbose=verbose)
+        self.current_sim_time = 0.
         self.update_birth()
         self.get_ele_J()
         self.get_surf_ip_pos_and_J()
@@ -303,7 +299,7 @@ class domain_mgr():
 
                 elif line.split()[0] == '*TOOL_FILE':
                     line = next(f)
-                    self.toolpath_file = line.split()[0]
+                    #self.toolpath_file = line.split()[0]   # REMOVED -TAKES TOOLPATH AS ARGUMENT FROM TOP LEVEL
                     line = next(f)
 
                 elif line.split()[0] == '*PARAMETER':
@@ -319,7 +315,9 @@ class domain_mgr():
                 elif line.split()[0] == '*GAUSS_LASER':
                     line = next(f)
                     text = line.split()
-                    self.q_in = float(text[0])*float(text[2])
+                    self.lp = float(text[0]) # Effective laser power
+                    self.absortivity = float(text[2])   # Absortivity
+                    self.q_in = self.lp*self.absortivity    # Actual power input
                     self.r_beam = float(text[1])
 
                 elif line.split()[0] == '*CONTROL_TIMESTEP':
@@ -330,7 +328,7 @@ class domain_mgr():
                 elif line.split()[0] == '*CONTROL_TERMINATION':
                     line = next(f)
                     line = next(f)
-                    self.end_time = float(line.split()[0])
+                    self.end_sim_time = float(line.split()[0])
 
                 elif line.split()[0] == '*DATABASE_NODOUT':
                     line = next(f)
@@ -441,39 +439,42 @@ class domain_mgr():
         self.mat_thermal = mat_thermal
         self.thermal_TD = thermal_TD
         
-    def init_domain(self):
+    def init_domain(self, verbose):
         # reading input files
         start = time.time()
         self.load_file()
         end = time.time()
-        print("Time of reading input files: {}".format(end-start))
+        readtime = end-start
         
         # calculating critical timestep
-        self.defaultFac = 0.8
+        self.defaultFac = 0.75
         start = time.time()
         self.get_timestep()
         end = time.time()
-        print("Time of calculating critical timestep: {}".format(end-start))
+        calctimesteptime = end-start
 
         # reading and interpolating toolpath
         start = time.time()
         toolpath_raw = load_toolpath(filename = self.toolpath_file)
-        toolpath = get_toolpath(toolpath_raw,self.dt,self.end_time)
+        toolpath = get_toolpath(toolpath_raw,self.dt,self.end_sim_time)
         end = time.time()
-        print("Time of reading and interpolating toolpath: {}".format(end-start))
+        interptoolpathtime = end-start
         self.toolpath = cp.asarray(toolpath)
 
-        print("Number of nodes: {}".format(len(self.nodes)))
-        print("Number of elements: {}".format(len(self.elements)))
-        print("Number of time-steps: {}".format(len(self.toolpath)))
-                
         # generating surface
         start = time.time()
         self.generate_surf()
         end = time.time()
-        print("Time of generating surface: {}".format(end-start))
-        
+        surftime = end-start
 
+        if verbose:
+            print("Time of reading input files: {}".format(readtime))
+            print("Time of calculating critical timestep: {}".format(calctimesteptime))
+            print("Time of reading and interpolating toolpath: {}".format(interptoolpathtime))
+            print("Number of nodes: {}".format(len(self.nodes)))
+            print("Number of elements: {}".format(len(self.elements)))
+            print("Number of time-steps: {}".format(len(self.toolpath)))
+            print("Time of generating surface: {}".format(surftime))
         
     def generate_surf(self):
         elements = self.elements
@@ -514,9 +515,9 @@ class domain_mgr():
 
 
     def update_birth(self):
-        self.active_elements = self.element_birth<=self.current_time
-        self.active_nodes = self.node_birth<=self.current_time
-        self.active_surface = (self.surface_birth[:,0]<=self.current_time)*(self.surface_birth[:,1]>self.current_time)
+        self.active_elements = self.element_birth<=self.current_sim_time
+        self.active_nodes = self.node_birth<=self.current_sim_time
+        self.active_surface = (self.surface_birth[:,0]<=self.current_sim_time)*(self.surface_birth[:,1]>self.current_sim_time)
     
     def get_ele_J(self):
         nodes_pos = self.nodes[self.elements]
@@ -739,9 +740,58 @@ class heat_solve_mgr():
             self.temperature[cp.where(domain.nodes[:,2]==-self.height)]=self.ambient
         
         self.current_step += 1
-        domain.current_time += domain.dt
-            
+        domain.current_sim_time += domain.dt
 
+    def update_field_no_integration(self):
+        '''Updates the surfaces but does not use the heat solver'''
+        domain = self.domain
+        domain.update_birth()
+        self.update_cp_cond()
+        #self.update_mvec_stifness()
+
+        self.laser_loc = domain.toolpath[self.current_step,0:3]
+        self.laser_state = domain.toolpath[self.current_step,3]
+        #self.update_fluxes()
+
+        #self.temperature[domain.active_nodes] += domain.dt*self.rhs[domain.active_nodes]/self.m_vec[domain.active_nodes]
+        # modification required
+        #if self.isothermal == 1:
+        #    self.temperature[cp.where(domain.nodes[:,2]==-self.height)]=self.ambient
+        
+        self.current_step += 1
+        domain.current_sim_time += domain.dt
+
+    def find_closest_surf_dist(self):
+        '''Finds the closest distance between every active node, and all surface elements'''
+
+        # Get all nodes
+        all_nodes = self.domain.nodes
+
+        # Take subset of nodes on the active surface
+        surf_nodes = all_nodes[np.unique((self.domain.surface[self.domain.active_surface]).flatten())]
+
+        # Find distance between every node and every node on the surface
+        all_dist = skm.pairwise_distances(all_nodes.get(), surf_nodes.get())
+
+        # Take minimum corresponding to every node
+        closest_surf_dist = all_dist.min(axis=1)
+
+        # Return closest distances
+        return closest_surf_dist
+    
+    def find_laser_dist(self):
+        '''Find the closest distance between every active nodes, and the laser location'''
+
+        # get all nodes
+        all_nodes = self.domain.nodes
+
+        # laser location
+        laser_loc = self.laser_loc
+
+        # Distances
+        laser_dist = skm.pairwise_distances(all_nodes.get(), np.expand_dims(laser_loc.get(), 0))
+        return laser_dist.squeeze()
+        
     
     def calculate_melt(self,solidus):
         domain = self.domain

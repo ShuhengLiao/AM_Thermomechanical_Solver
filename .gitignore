@@ -1,0 +1,10 @@
+*.vtk
+*.pyc
+/output
+/zarr_output
+launch.json
+*.tar.gz
+*.zgroup
+*.pyc
+*.csv
+*nohup.out*
