@@ -44,15 +44,15 @@ sim_dir_name = "thin_wall"
 
 # rclone directory - change for your device
 rclone_stream = "ONEDRIVE-NU:"
-dest_dir = os.path.join("DED-DT - IDEAS Lab", "08-Technical", "data-gamma")
+dest_dir = os.path.join("DED-DT - IDEAS Lab", "08-Technical", "data-gamma-new")
 
 # prefix for laser power signals
 prefix = "NLP_"
 
 # Simulations to run
 sim_list = []
-sim_list.append(range(0, 50))
-sim_list.append(range(50, 100))
+sim_list.append(range(0, 10))
+#sim_list.append(range(50, 100))
 
 #sim_list.append(range(0, 1))
 #sim_list.append(range(1, 2))
@@ -64,7 +64,7 @@ NumGPUs = len(sim_list)
 # GPU assignments
 # Current version (new): do NOT run multiple on one GPU, even though it allows.
 # either 
-GPULIST = np.array([0, 1], dtype=int)
+GPULIST = np.array([1], dtype=int)
 
 if len(GPULIST) < NumGPUs:
    Exception("Error! More GPUs requested than assigned.")

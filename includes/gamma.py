@@ -423,8 +423,6 @@ class domain_mgr():
             element_mat = element_mat[e_id_sort]
             element_birth = element_birth[e_id_sort]
         
-        
-        
         self.nodes = cp.asarray(nodes)
         self.nN = self.nodes.shape[0]
         self.node_birth = node_birth

@@ -285,7 +285,7 @@ class FeaModel():
             self.zarr_stream.streamobj["ff_dt_active_nodes"][self.ZarrFileNum] = active_nodes
             self.zarr_stream.streamobj["ff_dt_temperature"][self.ZarrFileNum] = ff_temperature
             self.zarr_stream.streamobj["ff_dt_active_elements"][self.ZarrFileNum] = active_elements
-            self.zarr_stream.streamobj["ff_laser_power_birth"][activated_nodes] = laser_power[0]
+            self.zarr_stream.streamobj["ff_laser_power_birth"].oindex[activated_nodes] = laser_power[0]
 
         elif outputmode == "bulked":
             new_row = np.zeros([1, (5+self.domain.nodes.shape[0])])
