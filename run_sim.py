@@ -110,6 +110,9 @@ class FeaModel():
         # Time loop
         self.tic_start = time.perf_counter()
         self.tic_jtr = self.tic_start
+
+        active_nodes_previous = self.domain.active_nodes.astype('i1')
+
         while self.domain.current_sim_time < self.domain.end_sim_time - 1e-8 and self.heat_solver.current_step < self.max_itr :
 
             # Load the current step of the laser profile, and multiply by the absortivity
@@ -131,9 +134,12 @@ class FeaModel():
                 mempool = cp.get_default_memory_pool()
                 mempool.free_all_blocks()
 
+                # Get active nodes.
+                active_nodes = self.domain.active_nodes.astype('i1')
+
                 # Save output file
                 self.ZarrFileNum = self.ZarrFileNum + 1
-                self.RecordTempsZarr()
+                self.RecordTempsZarr(active_nodes, active_nodes_previous)
 
             # save .vtk file if the current time is greater than an expected output time
             # offset time by dt/10 due to floating point error
@@ -160,9 +166,14 @@ class FeaModel():
                 self.VtkFileNum = self.VtkFileNum + 1
                 self.output_time = self.domain.current_sim_time
 
+            active_nodes_previous = active_nodes
+
  
     def calc_geom_params(self):
         ''' Calculate surface distances. '''
+
+        # Save the node birth times.
+        self.zarr_stream.streamobj["ff_timestamp_node_deposition"] = self.domain.node_birth
 
         # Time loop
         self.tic_start = time.perf_counter()
@@ -215,6 +226,7 @@ class FeaModel():
                 self.VtkFileNum = self.VtkFileNum + 1
                 self.output_time = self.domain.current_sim_time
 
+
     def OneDriveUpload(self, rclone_stream, destination, BashLoc):
         # Directory of output
         output_dir = os.path.join(self.geom_dir, self.laserpowerfile)
@@ -250,7 +262,7 @@ class FeaModel():
         # Run commands to upload vtk to drive
         subprocess.Popen(TarVTKCmd + " && " + DelVTKOrigCmd + " && " + UploadVTKTarCmd + " && " + DelVTKTarCmd, shell=True, executable=BashLoc)
 
-    def RecordTempsZarr(self, outputmode="structured"):
+    def RecordTempsZarr(self, active_nodes, active_nodes_prev, outputmode="structured"):
         '''Records a single data point to a zarr file'''
 
         timestep = np.expand_dims(self.domain.current_sim_time, axis=0)
@@ -258,21 +270,23 @@ class FeaModel():
         pos_y = np.expand_dims(self.heat_solver.laser_loc[1].get(), axis=0)
         pos_z = np.expand_dims(self.heat_solver.laser_loc[2].get(), axis=0)
         laser_power = np.expand_dims(self.heat_solver.q_in, axis=0)
-        active_nodes = self.domain.active_nodes.astype('i1')
         ff_temperature = self.heat_solver.temperature.get()
         active_elements = self.domain.active_elements.astype('i1')
+
+        activated_nodes = np.where(active_nodes != active_nodes_prev)[0]
 
         if outputmode == "structured":
             # For each of the data streams, append the data for the current time step
             # expanding dimensions as needed to match
             self.zarr_stream.streamobj["timestamp"][self.ZarrFileNum] = timestep
-            self.zarr_stream.streamobj["pos_x"][self.ZarrFileNum] = pos_x
-            self.zarr_stream.streamobj["pos_y"][self.ZarrFileNum] = pos_y
-            self.zarr_stream.streamobj["pos_z"][self.ZarrFileNum] = pos_z
-            self.zarr_stream.streamobj["laser_power"][self.ZarrFileNum] = laser_power
-            self.zarr_stream.streamobj["active_nodes"][self.ZarrFileNum] = active_nodes
-            self.zarr_stream.streamobj["ff_temperature"][self.ZarrFileNum] = ff_temperature
-            self.zarr_stream.streamobj["active_elements"][self.ZarrFileNum] = active_elements
+            self.zarr_stream.streamobj["dt_pos_x"][self.ZarrFileNum] = pos_x
+            self.zarr_stream.streamobj["dt_pos_y"][self.ZarrFileNum] = pos_y
+            self.zarr_stream.streamobj["dt_pos_z"][self.ZarrFileNum] = pos_z
+            self.zarr_stream.streamobj["dt_laser_power"][self.ZarrFileNum] = laser_power
+            self.zarr_stream.streamobj["ff_dt_active_nodes"][self.ZarrFileNum] = active_nodes
+            self.zarr_stream.streamobj["ff_dt_temperature"][self.ZarrFileNum] = ff_temperature
+            self.zarr_stream.streamobj["ff_dt_active_elements"][self.ZarrFileNum] = active_elements
+            self.zarr_stream.streamobj["ff_laser_power_birth"][self.ZarrFileNum, activated_nodes] = laser_power[0]
 
         elif outputmode == "bulked":
             new_row = np.zeros([1, (5+self.domain.nodes.shape[0])])
@@ -295,8 +309,8 @@ class FeaModel():
         surf_dist = self.nodal_surf_distance
 
         self.zarr_stream.streamobj["timestamp"][self.ZarrFileNum] = timestep
-        self.zarr_stream.streamobj["laser_dist"][self.ZarrFileNum] = laser_dist
-        self.zarr_stream.streamobj["surf_dist"][self.ZarrFileNum] = surf_dist
+        self.zarr_stream.streamobj["ff_dt_dist_node_laser"][self.ZarrFileNum] = laser_dist
+        self.zarr_stream.streamobj["ff_dt_dist_node_boundary"][self.ZarrFileNum] = surf_dist
 
 
     ## DEFINE SAVE VTK FILE FUNCTION
@@ -340,14 +354,15 @@ class AuxDataRecorder():
         # Types of data being captured
         self.dataStreams = [
             "timestamp",
-            "laser_dist",
-            "surf_dist"
+            "ff_dt_dist_node_laser",
+            "ff_dt_dist_node_boundary",
+            "ff_timestamp_node_deposition"
         ]
 
         # Dimension of one time-step of each data stream
-        dims = [1, nnodes, nnodes]
+        dims = [1, nnodes, nnodes, nnodes]
         # Type of each data stream
-        types = ['f8', 'f8', 'f8']
+        types = ['f8', 'f8', 'f8', 'f8']
 
         self.dimsdict = {self.dataStreams[itr]:dims[itr] for itr in range(0, len(self.dataStreams))}
         self.typedict = {self.dataStreams[itr]:types[itr] for itr in range(0, len(self.dataStreams))}
@@ -380,19 +395,20 @@ class DataRecorder():
             # Types of data being captured
             self.dataStreams = [
                 "timestamp",
-                "pos_x",
-                "pos_y",
-                "pos_z",
-                "laser_power",
-                "active_nodes",
-                "ff_temperature",
-                "active_elements"
+                "dt_pos_x",
+                "dt_pos_y",
+                "dt_pos_z",
+                "dt_laser_power",
+                "ff_dt_active_nodes",
+                "ff_dt_temperature",
+                "ff_dt_active_elements",
+                "ff_laser_power_birth"
             ]
 
             # Dimension of one time-step of each data stream
-            dims = [1, 1, 1, 1, 1, nnodes, nnodes, nele]
+            dims = [1, 1, 1, 1, 1, nnodes, nnodes, nele, nnodes]
             # Type of each data stream
-            types = ['f8', 'f8', 'f8', 'f8', 'f8', 'i1', 'f8', 'i1']
+            types = ['f8', 'f8', 'f8', 'f8', 'f8', 'i1', 'f8', 'i1', 'f8']
 
         elif outputmode == "bulked":
             self.outputFolderPath = outputFolderPath
