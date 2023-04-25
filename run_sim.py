@@ -172,7 +172,7 @@ class FeaModel():
         ''' Calculate surface distances. '''
 
         # Save the node birth times.
-        self.zarr_stream.streamobj["ff_timestamp_node_deposition"] = self.domain.node_birth
+        self.zarr_stream.streamobj["ff_timestamp_node_deposition"].oindex[:] = np.expand_dims(self.domain.node_birth, 1)
 
         # Time loop
         self.tic_start = time.perf_counter()
@@ -452,7 +452,7 @@ class DataRecorder():
         self.ele = self.out_root.create_dataset("elements", shape=nele, dtype='i8', overwrite=True)
 
 if __name__ == "__main__":
-    with cp.cuda.Device(0).use():
+    with cp.cuda.Device(1).use():
         tic = time.perf_counter()
         model = FeaModel('thin_wall', 'NLP_1', ZarrOutputStep=0.02, CalcNodeSurfDist=True, outputVtkFiles=False)
         toc1 = time.perf_counter()
