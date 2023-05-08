@@ -5,7 +5,7 @@ import pyvista as pv
 from pyvirtualdisplay import Display
 import vtk
 
-def write_keywords(file_name,output_file,height):
+def write_keywords(file_name, output_file, height):
     with open(file_name,'r') as input_file:
         lines = input_file.readlines()
 
@@ -55,14 +55,14 @@ def write_keywords(file_name,output_file,height):
     node_set2 = []
     for i in range(len(node)):
         if node[i,3]>=height:
-            node_set2.append(int(node[i,0]))
+            node_set2.append(int(node[i, 0]))
     node_set2 = np.asarray(node_set2)
 
     #node set 3, z==-height
     node_set3 = []
     for i in range(len(node)):
         if node[i,3]==0:
-            node_set3.append(int(node[i,0]))
+            node_set3.append(int(node[i, 0]))
     node_set3 = np.asarray(node_set3)
 
     f = open(output_file,'w')

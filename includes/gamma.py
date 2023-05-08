@@ -811,7 +811,6 @@ class heat_solve_mgr():
             
             ele_nodes_pos = domain.nodes[elements]
 
-
             temperature_ele_top = temperature_ele_nodes[:,4:8].max(axis=1)
             temperature_ele_bot = temperature_ele_nodes[:,0:4].max(axis=1)
             z_top = ele_nodes_pos[:,4,2]
