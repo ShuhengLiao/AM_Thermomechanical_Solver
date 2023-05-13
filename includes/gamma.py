@@ -9,6 +9,7 @@ from pyvirtualdisplay import Display
 import vtk
 import pyvista as pv
 import sklearn.metrics as skm
+from scipy.spatial.distance import cdist
 
 @jit('void(int64[:,:], float64[:],float64[:])',nopython=True)
 def asign_birth_node(elements,element_birth,node_birth):
@@ -141,21 +142,21 @@ def load_toolpath(filename):
     toolpath_raw=pd.read_table(filename, delimiter=r"\s+",header=None, names=['time','x','y','z','state'])
     return toolpath_raw.to_numpy()
 
-def get_toolpath(toolpath_raw,dt,endtime):
-    time = np.arange(dt/2,endtime,dt)
-    x = np.interp(time,toolpath_raw[:,0],toolpath_raw[:,1])
-    y = np.interp(time,toolpath_raw[:,0],toolpath_raw[:,2])
-    z = np.interp(time,toolpath_raw[:,0],toolpath_raw[:,3])
+def get_toolpath(toolpath_raw, dt, endtime):
+    time = np.arange(dt/1000, endtime, dt)
+    x = np.interp(time, toolpath_raw[:,0], toolpath_raw[:,1])
+    y = np.interp(time, toolpath_raw[:,0], toolpath_raw[:,2])
+    z = np.interp(time, toolpath_raw[:,0], toolpath_raw[:,3])
 
-    laser_state = np.interp(time,toolpath_raw[:,0],toolpath_raw[:,4])
+    laser_state = np.interp(time,toolpath_raw[:,0], toolpath_raw[:,4])
     l = np.zeros_like(laser_state) 
     for i in range(0,laser_state.shape[0]-1):
-        if laser_state[i+1]>laser_state[i] or laser_state[i] == 1:
+        if laser_state[i+1] > laser_state[i] or laser_state[i] == 1:
             l[i] = 1
         else:
             l[i] = 0
     laser_state = l
-    laser_state = laser_state* (time<=toolpath_raw[-1,0]) #if time >= toolpath time, stop laser
+    laser_state = laser_state*(time<=toolpath_raw[-1,0]) #if time >= toolpath time, stop laser
     
     return np.array([x,y,z,laser_state]).transpose()
 
@@ -207,7 +208,7 @@ def derivate_shape_fnc_surface(parCoord):
     return B
 
 class domain_mgr():
-    def __init__(self,filename,sort_birth = True, toolpathdir='toolpath.crs', verbose=True):
+    def __init__(self, filename, sort_birth=True, toolpathdir='toolpath.crs', verbose=True, timestep_override=0):
         self.toolpath_file = toolpathdir
         self.filename = filename
         self.sort_birth = sort_birth
@@ -220,7 +221,7 @@ class domain_mgr():
         self.Nip_sur = cp.array([shape_fnc_surface(parCoord) for parCoord in parCoords_surface])
         self.Bip_sur = cp.array([derivate_shape_fnc_surface(parCoord) for parCoord in parCoords_surface])
         
-        self.init_domain(verbose=verbose)
+        self.init_domain(verbose=verbose, timestep_override=timestep_override)
         self.current_sim_time = 0.
         self.update_birth()
         self.get_ele_J()
@@ -437,7 +438,7 @@ class domain_mgr():
         self.mat_thermal = mat_thermal
         self.thermal_TD = thermal_TD
         
-    def init_domain(self, verbose):
+    def init_domain(self, verbose, timestep_override):
         # reading input files
         start = time.time()
         self.load_file()
@@ -447,7 +448,12 @@ class domain_mgr():
         # calculating critical timestep
         self.defaultFac = 0.75
         start = time.time()
-        self.get_timestep()
+
+        if timestep_override > 0:
+            self.dt=timestep_override
+            pass
+        else:
+            self.get_timestep()
         end = time.time()
         calctimesteptime = end-start
 
@@ -600,7 +606,7 @@ class domain_mgr():
             self.dt = min(self.dt,dt.item())
 
 class heat_solve_mgr():
-    def __init__(self,domain):
+    def __init__(self, domain):
         ##### modification needed, from files
         self.domain = domain
         self.ambient = domain.ambient
@@ -684,8 +690,8 @@ class heat_solve_mgr():
         self.rhs *= 0
         self.m_vec *= 0
 
-        scatter_add(self.rhs,elements.flatten(),-stiff_temp.flatten())
-        scatter_add(self.m_vec,elements.flatten(),lump_mass.flatten())
+        scatter_add(self.rhs, elements.flatten(), -stiff_temp.flatten())
+        scatter_add(self.m_vec, elements.flatten(), lump_mass.flatten())
         
 
     def update_fluxes(self):
@@ -787,11 +793,10 @@ class heat_solve_mgr():
         laser_loc = self.laser_loc
 
         # Distances
-        laser_dist = skm.pairwise_distances(all_nodes.get(), np.expand_dims(laser_loc.get(), 0))
+        laser_dist = cdist(all_nodes.get(), np.expand_dims(laser_loc.get(), 0))
         return laser_dist.squeeze()
-        
     
-    def calculate_melt(self,solidus):
+    def calculate_melt(self, solidus):
         domain = self.domain
         elements = domain.elements_order[domain.active_elements]
         temperature_ele_nodes = self.temperature[elements]

@@ -22,8 +22,9 @@ importlib.reload(sys.modules['includes.gamma'])
 importlib.reload(sys.modules['includes.preprocessor'])
 
 class FeaModel():
-    def __init__(self, geom_dir, laserpowerfile, VtkOutputStep=1, ZarrOutputStep=0.02, outputVtkFiles=True, verbose=True, CalcNodeSurfDist=False):
+    def __init__(self, geom_dir, laserpowerfile, timestep_override,VtkOutputStep=1, ZarrOutputStep=0.02, outputVtkFiles=True, verbose=True, CalcNodeSurfDist=False):
         
+        self.timestep_override = timestep_override
         self.outputVtkFiles = outputVtkFiles
         self.CalcNodeSurfDist = CalcNodeSurfDist
         ## Setting up resources
@@ -41,7 +42,7 @@ class FeaModel():
         self.toolpath_file = os.path.join("geometries-toolpaths", self.geom_dir, "toolpath.crs")
 
         # Start heat_solver and simulation domain
-        self.domain = domain_mgr(filename=self.geometry_file, toolpathdir=self.toolpath_file, verbose=self.verbose)
+        self.domain = domain_mgr(filename=self.geometry_file, toolpathdir=self.toolpath_file, verbose=self.verbose, timestep_override=timestep_override)
         self.heat_solver = heat_solve_mgr(self.domain)
         
         # Read laser power input and timestep-sync file
@@ -177,7 +178,6 @@ class FeaModel():
         # Time loop
         self.tic_start = time.perf_counter()
         self.tic_jtr = self.tic_start
-        self.domain.dt = self.ZarrOutputStep
         while self.domain.current_sim_time < self.domain.end_sim_time - 1e-8 and self.heat_solver.current_step < self.max_itr :
 
             # Don't run the solver - instead, just move the laser
@@ -188,7 +188,6 @@ class FeaModel():
 
                 # Find closest surfaces
                 self.nodal_surf_distance = self.heat_solver.find_closest_surf_dist()
-
                 # Free unused memory blocks
                 mempool = cp.get_default_memory_pool()
                 mempool.free_all_blocks()
@@ -454,7 +453,8 @@ class DataRecorder():
 if __name__ == "__main__":
     with cp.cuda.Device(1).use():
         tic = time.perf_counter()
-        model = FeaModel('thin_wall', 'NLP_1', ZarrOutputStep=0.02, CalcNodeSurfDist=True, outputVtkFiles=False)
+        timestep = 0.02 # seconds
+        model = FeaModel('thin_wall', 'NLP_1', ZarrOutputStep=timestep, CalcNodeSurfDist=True, outputVtkFiles=True, timestep_override=timestep, VtkOutputStep=1.0)
         toc1 = time.perf_counter()
         model.calc_geom_params()
         toc2 = time.perf_counter()

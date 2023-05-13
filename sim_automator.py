@@ -55,7 +55,8 @@ sim_list = []
 #sim_list.append(range(50, 100))
 
 #sim_list.append(range(10, 55))
-sim_list.append([46, 47, 48, 49, 50, 51, 52, 53, 54, 55])
+#sim_list.append([46, 47, 48, 49, 50])
+sim_list.append([51, 52, 53, 54, 55])
 #sim_list.append(range(2, 3))
 #sim_list.append(range(3, 4))
 #sim_list.append(range(4, 5))
@@ -64,7 +65,7 @@ NumGPUs = len(sim_list)
 # GPU assignments
 # Current version (new): do NOT run multiple on one GPU, even though it allows.
 # either 
-GPULIST = np.array([2], dtype=int)
+GPULIST = np.array([1, 2], dtype=int)
 
 if len(GPULIST) < NumGPUs:
    Exception("Error! More GPUs requested than assigned.")
