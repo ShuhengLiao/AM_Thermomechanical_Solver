@@ -24,9 +24,9 @@ def CallRunSim(GPUse, SimSet, StartWallTime):
             # Create simulation object
             sim_itr = rs.FeaModel(geom_dir=sim_dir_name,
                                 laserpowerfile=laser_file,
-                                VtkOutputStep = 1,
+                                VtkOutputStep = 2,
                                 ZarrOutputStep = 0.02,
-                                outputVtkFiles=False,
+                                outputVtkFiles=True,
                                 verbose=False)
             
             # Run simulation
@@ -47,25 +47,19 @@ rclone_stream = "ONEDRIVE-NU:"
 dest_dir = os.path.join("DED-DT - IDEAS Lab", "08-Technical", "data-gamma-new")
 
 # prefix for laser power signals
-prefix = "NLP_"
+prefix = "FLP_"
 
 # Simulations to run
 sim_list = []
-# sim_list.append(range(0, 10))
-#sim_list.append(range(50, 100))
+sim_list.append(range(0, 51))
+sim_list.append(range(51, 101))
 
-#sim_list.append(range(10, 55))
-#sim_list.append([46, 47, 48, 49, 50])
-sim_list.append([51, 52, 53, 54, 55])
-#sim_list.append(range(2, 3))
-#sim_list.append(range(3, 4))
-#sim_list.append(range(4, 5))
 NumGPUs = len(sim_list)
 
 # GPU assignments
 # Current version (new): do NOT run multiple on one GPU, even though it allows.
 # either 
-GPULIST = np.array([1, 2], dtype=int)
+GPULIST = np.array([0, 1], dtype=int)
 
 if len(GPULIST) < NumGPUs:
    Exception("Error! More GPUs requested than assigned.")

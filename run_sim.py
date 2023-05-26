@@ -22,7 +22,7 @@ importlib.reload(sys.modules['includes.gamma'])
 importlib.reload(sys.modules['includes.preprocessor'])
 
 class FeaModel():
-    def __init__(self, geom_dir, laserpowerfile, timestep_override,VtkOutputStep=1, ZarrOutputStep=0.02, outputVtkFiles=True, verbose=True, CalcNodeSurfDist=False):
+    def __init__(self, geom_dir, laserpowerfile, timestep_override=-1, VtkOutputStep=1, ZarrOutputStep=0.02, outputVtkFiles=True, verbose=True, CalcNodeSurfDist=False):
         
         self.timestep_override = timestep_override
         self.outputVtkFiles = outputVtkFiles

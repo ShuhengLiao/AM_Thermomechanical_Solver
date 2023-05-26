@@ -208,7 +208,7 @@ def derivate_shape_fnc_surface(parCoord):
     return B
 
 class domain_mgr():
-    def __init__(self, filename, sort_birth=True, toolpathdir='toolpath.crs', verbose=True, timestep_override=0):
+    def __init__(self, filename, sort_birth=True, toolpathdir='toolpath.crs', verbose=True, timestep_override=-1):
         self.toolpath_file = toolpathdir
         self.filename = filename
         self.sort_birth = sort_birth
