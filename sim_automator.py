@@ -24,10 +24,10 @@ def CallRunSim(GPUse, SimSet, StartWallTime):
             # Create simulation object
             sim_itr = rs.FeaModel(geom_dir=sim_dir_name,
                                 laserpowerfile=laser_file,
-                                VtkOutputStep = 2,
+                                VtkOutputStep = 1.,
                                 ZarrOutputStep = 0.02,
                                 outputVtkFiles=True,
-                                verbose=False)
+                                verbose=True)
             
             # Run simulation
             sim_itr.run()
