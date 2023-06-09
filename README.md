@@ -5,7 +5,7 @@ A GPU-accelerated FEM solver for residual stress simulation in additive manufact
 Shuheng Liao, Ashkan Golgoon
 
 **Paper:**
-Liao, Shuheng, Ashkan Golgoon, Mojtaba Mozaffar, and Jian Cao. "Efficient GPU-accelerated thermomechanical solver for residual stress prediction in additive manufacturing." Computational Mechanics 71, no. 5 (2023): 879-893.
+Liao, S., Golgoon, A., Mozaffar, M., & Cao, J. (2023). Efficient GPU-accelerated thermomechanical solver for residual stress prediction in additive manufacturing. Computational Mechanics, 71(5), 879-893.
 
 **Example results:**
 <p align="middle">
