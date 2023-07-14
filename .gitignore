@@ -1,7 +1,8 @@
 *.vtk
 *.pyc
-/output
-/zarr_output
+output/
+zarr_output/
+*.zarr
 launch.json
 *.tar.gz
 *.zgroup

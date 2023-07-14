@@ -1,3 +1,4 @@
+import os
 from numba import jit
 import cupy as cp
 from cupyx import scatter_add
@@ -204,9 +205,11 @@ def derivate_shape_fnc_surface(parCoord):
     return B
 
 class domain_mgr():
-    def __init__(self, filename, sort_birth=True, toolpathdir='toolpath.crs', verbose=True, timestep_override=-1):
+    def __init__(self, filename, sort_birth=True, toolpathdir='toolpath.crs', verbose=True, timestep_override=-1,
+                 input_data_dir="."):
         self.toolpath_file = toolpathdir
         self.filename = filename
+        self.input_data_dir = input_data_dir
         self.sort_birth = sort_birth
         parCoords_element = np.array([[-1.0,-1.0,-1.0],[1.0,-1.0,-1.0],[1.0, 1.0,-1.0],[-1.0, 1.0,-1.0],
                                       [-1.0,-1.0,1.0],[1.0,-1.0, 1.0], [ 1.0,1.0,1.0],[-1.0, 1.0,1.0]]) * 0.5773502692
@@ -370,9 +373,11 @@ class domain_mgr():
                                         -1, # heat capacity, TD
                                         -1,]) # thermal conductivity, TD '
                     line = next(f)
-                    Cp = np.loadtxt(line.split()[0])
+                    fullPath = os.path.join(self.input_data_dir, line.split()[0])
+                    Cp = np.loadtxt(fullPath)
                     line = next(f)
-                    cond = np.loadtxt(line.split()[0])
+                    fullPath = os.path.join(self.input_data_dir, line.split()[0])
+                    cond = np.loadtxt(fullPath)
                     thermal_TD[int(text1[0])] = [Cp,cond]
 
 
