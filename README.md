@@ -6,7 +6,6 @@ Shuheng Liao, Ashkan Golgoon
 
 Additional programming by Rujing Zha and Anthony Goeckner.
 
-
 **Paper:**
 Liao, S., Golgoon, A., Mozaffar, M., & Cao, J. (2023). Efficient GPU-accelerated thermomechanical solver for residual stress prediction in additive manufacturing. Computational Mechanics, 71(5), 879-893.
 
@@ -17,6 +16,7 @@ Liao, S., Golgoon, A., Mozaffar, M., & Cao, J. (2023). Efficient GPU-accelerated
 <p align="middle">
   <img src="docs/files/L_zigzag.gif" width="600" />
 </p>
+
 
 # Installation Instructions
 
@@ -41,3 +41,18 @@ Liao, S., Golgoon, A., Mozaffar, M., & Cao, J. (2023). Efficient GPU-accelerated
    conda env update -f ./environment.yml
    ```
 
+5) Install the `gamma` package:
+   ```bash
+   pip install -e .
+   ```
+
+
+# Usage Instructions
+
+After installing GAMMA using the [Installation Instructions](#installation-instructions) above, import the GAMMA interface in your project as follows:
+
+```python
+from gamma.interface import FeaModel
+```
+
+Then use the `FeaModel` class to run the simulation.

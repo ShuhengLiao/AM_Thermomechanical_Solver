@@ -10,7 +10,7 @@ import pyvista as pv
 import vtk
 import zarr as z
 
-from simulator.gamma import domain_mgr, heat_solve_mgr
+from gamma.simulator.gamma import domain_mgr, heat_solve_mgr
 
 
 class FeaModel():

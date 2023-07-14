@@ -1,5 +1,6 @@
 *.vtk
 *.pyc
+*.egg-info
 output/
 zarr_output/
 *.zarr
