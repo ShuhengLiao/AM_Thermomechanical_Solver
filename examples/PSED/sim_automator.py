@@ -8,6 +8,8 @@ import time
 def CallRunSim(GPUse, SimSet, StartWallTime):
     with cp.cuda.Device(GPUse).use():
 
+        folder = os.path.dirname(os.path.abspath(__file__))
+
         # Set unlimited memory for mempool
         mempool = cp.get_default_memory_pool()
         mempool.set_limit(size=48*1024**3)
@@ -16,7 +18,9 @@ def CallRunSim(GPUse, SimSet, StartWallTime):
             laser_file = prefix + str(SimSet[itr]+1)
             
             # Create simulation object
-            sim_itr = rs.FeaModel(geom_dir=sim_dir_name,
+            sim_itr = rs.FeaModel(
+                                input_data_dir=os.path.join(folder, "..", "data"),
+                                geom_dir=sim_dir_name,
                                 laserpowerfile=laser_file,
                                 VtkOutputStep = 1.,
                                 ZarrOutputStep = 0.02,
