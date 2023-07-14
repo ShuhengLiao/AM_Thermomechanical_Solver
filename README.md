@@ -27,15 +27,19 @@ Liao, S., Golgoon, A., Mozaffar, M., & Cao, J. (2023). Efficient GPU-accelerated
    conda create -n gamma python=3.10
    ```
 
-3) Activate the conda environment.
+3) Activate the Conda environment.
    ```
    conda activate gamma
    ```
 
 4) Install all prerequisites. We require the following:
-   ```
-   numba pandas scikit-learn cupy pyvista pyvirtualdisplay
-   ```
+    * numba
+    * pandas
+    * scikit-learn
+    * cupy
+    * pyvista
+    * pyvirtualdisplay
+
    All of the listed prerequisites may be installed easily using `conda`, as seen below:
    ```bash
    conda env update -f ./environment.yml
