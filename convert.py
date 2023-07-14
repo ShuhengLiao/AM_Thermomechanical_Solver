@@ -1,7 +1,4 @@
-import numpy as np
-import includes.preprocessor as pre
-import includes.gamma
-import includes.func
+import gamma.simulator.preprocessor as pre
 import os
 
 # Input Filename

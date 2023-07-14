@@ -1,15 +1,9 @@
 import os
-import subprocess
-import importlib
 import numpy as np
-import matplotlib.pyplot as plt
 import cupy as cp
-import run_sim
-import pandas as pd
-import run_sim as rs
+import gamma.interface as rs
 from multiprocessing import Process
 import time
-importlib.reload(run_sim)
 
 def CallRunSim(GPUse, SimSet, StartWallTime):
     with cp.cuda.Device(GPUse).use():

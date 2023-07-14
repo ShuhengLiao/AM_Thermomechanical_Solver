@@ -1,27 +1,21 @@
-import sys
-import importlib
 import os
-from includes.preprocessor import write_keywords, write_birth, write_parameters
-from includes.gamma import domain_mgr, heat_solve_mgr, load_toolpath, get_toolpath
-import cupy as cp
-import numpy as np
-import pyvista as pv
-import vtk
-import pandas as pd
-import warnings
-# import h5py
-import zarr as z
 import subprocess
 import time
-import datetime
-import numba
-import gc
+import warnings
 
-# For debugging gamma.py or preprocessor, uncomment
-importlib.reload(sys.modules['includes.gamma'])
-importlib.reload(sys.modules['includes.preprocessor'])
+import cupy as cp
+import numpy as np
+import pandas as pd
+import pyvista as pv
+import vtk
+import zarr as z
+
+from simulator.gamma import domain_mgr, heat_solve_mgr
+
 
 class FeaModel():
+    ''' This class manages the FEA simulation. Use this as the primary interface to the simulation. '''
+
     def __init__(self, geom_dir, laserpowerfile, timestep_override=-1, VtkOutputStep=1, ZarrOutputStep=0.02, outputVtkFiles=True, verbose=True, CalcNodeSurfDist=False):
         
         self.timestep_override = timestep_override
@@ -60,7 +54,6 @@ class FeaModel():
         self.VtkOutputStep = VtkOutputStep  # Time step between iterations
         self.VtkOutputTimes = np.linspace(0, self.VtkOutputStep*self.max_itr, self.max_itr+1)
         self.VtkOutputTimes = [x for x in self.VtkOutputTimes if x <= self.domain.end_sim_time]
-        exp_vtk_num = len(self.VtkOutputTimes)
 
         # Zarr output steps: vector containing expected times at which a zarr file is generated
         self.ZarrOutputStep = ZarrOutputStep
@@ -104,6 +97,7 @@ class FeaModel():
                 filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.VtkFileNum))
                 self.save_vtk(filename)
             self.VtkFileNum = self.VtkFileNum + 1
+    
     
     def run(self):
         ''' Run the simulation. '''

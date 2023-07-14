@@ -4,10 +4,6 @@ from cupyx import scatter_add
 import pandas as pd
 import time
 import numpy as np
-import matplotlib.pyplot as plt
-from pyvirtualdisplay import Display
-import vtk
-import pyvista as pv
 import sklearn.metrics as skm
 from scipy.spatial.distance import cdist
 
