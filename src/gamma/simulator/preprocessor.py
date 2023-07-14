@@ -343,4 +343,52 @@ Rabszero         0.0
 *TOOL_FILE
 file_name
 *GAUSS_LASER
-laser_p
+laser_power radius effieciency
+*SCALAR_OUT
+temp
+solid_rate
+theta_hist
+nid_true
+*CONTROL_TERMINATION
+$$  ENDTIM    ENDCYC     DTMIN    ENDENG    ENDMAS
+   time
+*CONTROL_TIMESTEP
+$$  DTINIT    TSSFAC      ISDO    TSLIMT     DT2MS      LCTM     EROD       E     MSIST
+    1.0E-2       1.0
+*CONTROL_SOLUTION
+$$    SOLN
+         0
+*DATABASE_NODOUT
+$$      DT    BINARY      LCUR      IOPT      DTHF     BINHF
+    10.000         0
+*MAT_THERMAL_ISOTROPIC
+$HMNAME MATS       1MATT1_1
+         1   density   solidus   liqudius   latent_heat
+    cp    cond
+*MAT_THERMAL_ISOTROPIC
+$HMNAME MATS       2MATT1_2
+         2   density   solidus   liqudius   latent_heat
+    cp    cond
+*PART
+$HWCOLOR COMPS       1       3
+Substrate
+         1         0         1
+$HWCOLOR COMPS       2       4
+Build
+         2         0         2
+*LOAD_NODE_SET
+$HMNAME LOADCOLS       1LoadNode_1
+         3         1               300.0
+$	 moving flux
+         2         5                 0.0
+$	 Radiation
+         2         4                 0.2
+$	 convection
+         2         3             0.00005
+*INITIAL_TEMPERATURE_SET
+$HMNAME LOADCOLS       1InitialTemp_1
+$HWCOLOR LOADCOLS       1       3
+         1     300.0
+'''
+    f.write(text)
+    f.write(old)
