@@ -32,12 +32,12 @@ Liao, S., Golgoon, A., Mozaffar, M., & Cao, J. (2023). Efficient GPU-accelerated
    conda activate gamma
    ```
 
-4) Install required Conda packages:
+4) Install all prerequisites. We require the following:
    ```
-   conda install python=3.10 numba pandas
+   numba pandas scikit-learn cupy pyvista pyvirtualdisplay
+   ```
+   All of the listed prerequisites may be installed easily using `conda`, as seen below:
+   ```bash
+   conda env update -f ./environment.yml
    ```
 
-5) Install required Pip packages:
-   ```
-   pip install cupy pyvista pyvirtualdisplay
-   ```
