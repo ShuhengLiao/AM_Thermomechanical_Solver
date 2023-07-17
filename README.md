@@ -39,6 +39,7 @@ Liao, S., Golgoon, A., Mozaffar, M., & Cao, J. (2023). Efficient GPU-accelerated
     * cupy
     * pyvista
     * pyvirtualdisplay
+    * zarr
 
    All of the listed prerequisites may be installed easily using `conda`, as seen below:
    ```bash
