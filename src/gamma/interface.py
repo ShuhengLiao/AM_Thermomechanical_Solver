@@ -1,28 +1,22 @@
-import sys
-import importlib
 import os
-from includes.preprocessor import write_keywords, write_birth, write_parameters
-from includes.gamma import domain_mgr, heat_solve_mgr, load_toolpath, get_toolpath
-import cupy as cp
-import numpy as np
-import pyvista as pv
-import vtk
-import pandas as pd
-import warnings
-# import h5py
-import zarr as z
 import subprocess
 import time
-import datetime
-import numba
-import gc
+import warnings
 
-# For debugging gamma.py or preprocessor, uncomment
-importlib.reload(sys.modules['includes.gamma'])
-importlib.reload(sys.modules['includes.preprocessor'])
+import cupy as cp
+import numpy as np
+import pandas as pd
+import pyvista as pv
+import vtk
+import zarr as z
+
+from gamma.simulator.gamma import domain_mgr, heat_solve_mgr
+
 
 class FeaModel():
-    def __init__(self, geom_dir, laserpowerfile, timestep_override=-1, VtkOutputStep=1, ZarrOutputStep=0.02, outputVtkFiles=True, verbose=True, CalcNodeSurfDist=False):
+    ''' This class manages the FEA simulation. Use this as the primary interface to the simulation. '''
+
+    def __init__(self, input_data_dir, geom_dir, laserpowerfile, timestep_override=-1, VtkOutputStep=1, ZarrOutputStep=0.02, outputVtkFiles=True, verbose=True, CalcNodeSurfDist=False):
         
         self.timestep_override = timestep_override
         self.outputVtkFiles = outputVtkFiles
@@ -38,15 +32,15 @@ class FeaModel():
         self.geom_dir = geom_dir
 
         # Location of geometry and laser power sequence
-        self.geometry_file = os.path.join("geometries-toolpaths", self.geom_dir, "inp.k")
-        self.toolpath_file = os.path.join("geometries-toolpaths", self.geom_dir, "toolpath.crs")
+        self.geometry_file = os.path.join(input_data_dir, "geometries-toolpaths", self.geom_dir, "inp.k")
+        self.toolpath_file = os.path.join(input_data_dir, "geometries-toolpaths", self.geom_dir, "toolpath.crs")
 
         # Start heat_solver and simulation domain
-        self.domain = domain_mgr(filename=self.geometry_file, toolpathdir=self.toolpath_file, verbose=self.verbose, timestep_override=timestep_override)
+        self.domain = domain_mgr(input_data_dir=input_data_dir, filename=self.geometry_file, toolpathdir=self.toolpath_file, verbose=self.verbose, timestep_override=timestep_override)
         self.heat_solver = heat_solve_mgr(self.domain)
         
         # Read laser power input and timestep-sync file
-        inp = pd.read_csv(os.path.join("laser_inputs", self.geom_dir, self.laserpowerfile) + ".csv").to_numpy()
+        inp = pd.read_csv(os.path.join(input_data_dir, "laser_inputs", self.geom_dir, self.laserpowerfile) + ".csv").to_numpy()
         self.laser_power_seq = inp[:, 0]
         self.timesteps = inp[:, 1]
         self.las_max_itr = len(self.timesteps)
@@ -60,7 +54,6 @@ class FeaModel():
         self.VtkOutputStep = VtkOutputStep  # Time step between iterations
         self.VtkOutputTimes = np.linspace(0, self.VtkOutputStep*self.max_itr, self.max_itr+1)
         self.VtkOutputTimes = [x for x in self.VtkOutputTimes if x <= self.domain.end_sim_time]
-        exp_vtk_num = len(self.VtkOutputTimes)
 
         # Zarr output steps: vector containing expected times at which a zarr file is generated
         self.ZarrOutputStep = ZarrOutputStep
@@ -104,6 +97,7 @@ class FeaModel():
                 filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.VtkFileNum))
                 self.save_vtk(filename)
             self.VtkFileNum = self.VtkFileNum + 1
+    
     
     def run(self):
         ''' Run the simulation. '''
@@ -454,7 +448,8 @@ if __name__ == "__main__":
     with cp.cuda.Device(1).use():
         tic = time.perf_counter()
         timestep = 0.02 # seconds
-        model = FeaModel('thin_wall', 'NLP_1', ZarrOutputStep=timestep, CalcNodeSurfDist=True, outputVtkFiles=True, timestep_override=timestep, VtkOutputStep=1.0)
+        folder = os.path.dirname(os.path.abspath(__file__))
+        model = FeaModel(f'{folder}/../../examples/data','thin_wall', 'LP_1', ZarrOutputStep=timestep, CalcNodeSurfDist=True, outputVtkFiles=True, timestep_override=timestep, VtkOutputStep=1.0)
         toc1 = time.perf_counter()
         model.calc_geom_params()
         toc2 = time.perf_counter()

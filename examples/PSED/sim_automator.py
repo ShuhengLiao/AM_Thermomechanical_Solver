@@ -1,18 +1,14 @@
 import os
-import subprocess
-import importlib
 import numpy as np
-import matplotlib.pyplot as plt
 import cupy as cp
-import run_sim
-import pandas as pd
-import run_sim as rs
+import gamma.interface as rs
 from multiprocessing import Process
 import time
-importlib.reload(run_sim)
 
 def CallRunSim(GPUse, SimSet, StartWallTime):
     with cp.cuda.Device(GPUse).use():
+
+        folder = os.path.dirname(os.path.abspath(__file__))
 
         # Set unlimited memory for mempool
         mempool = cp.get_default_memory_pool()
@@ -22,7 +18,9 @@ def CallRunSim(GPUse, SimSet, StartWallTime):
             laser_file = prefix + str(SimSet[itr]+1)
             
             # Create simulation object
-            sim_itr = rs.FeaModel(geom_dir=sim_dir_name,
+            sim_itr = rs.FeaModel(
+                                input_data_dir=os.path.join(folder, "..", "data"),
+                                geom_dir=sim_dir_name,
                                 laserpowerfile=laser_file,
                                 VtkOutputStep = 1.,
                                 ZarrOutputStep = 0.02,

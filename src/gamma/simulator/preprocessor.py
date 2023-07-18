@@ -1,4 +1,4 @@
-from numba import jit,vectorize,guvectorize,cuda
+from numba import jit
 import numpy as np
 import pandas as pd
 import pyvista as pv

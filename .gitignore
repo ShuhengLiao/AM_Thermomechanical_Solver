@@ -1,7 +1,9 @@
 *.vtk
 *.pyc
-/output
-/zarr_output
+*.egg-info
+output/
+zarr_output/
+*.zarr
 launch.json
 *.tar.gz
 *.zgroup
