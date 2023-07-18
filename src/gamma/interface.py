@@ -25,9 +25,6 @@ class FeaModel():
         # output
         self.verbose = verbose
 
-        # laserpowerfile: profile of laser power w.r.t time
-        self.laserpowerfile = laserpowerfile
-
         # geom_dir: directory containing .k input file and toolpath.crs file
         self.geom_dir = geom_dir
 
@@ -39,26 +36,32 @@ class FeaModel():
         self.domain = domain_mgr(input_data_dir=input_data_dir, filename=self.geometry_file, toolpathdir=self.toolpath_file, verbose=self.verbose, timestep_override=timestep_override)
         self.heat_solver = heat_solve_mgr(self.domain)
         
-        # Read laser power input and timestep-sync file
-        inp = pd.read_csv(os.path.join(input_data_dir, "laser_inputs", self.geom_dir, self.laserpowerfile) + ".csv").to_numpy()
-        self.laser_power_seq = inp[:, 0]
-        self.timesteps = inp[:, 1]
-        self.las_max_itr = len(self.timesteps)
-
-        # las_max_itr: length of laser input signal
         # def_max_itr: time for original simulation to run to completion
         self.def_max_itr = int(self.domain.end_sim_time/self.domain.dt)
-        self.max_itr = min(self.las_max_itr, self.def_max_itr)
 
-        # VTK output_times: vector containing expected times at which a vtk file is outputted.
+        # laserpowerfile: profile of laser power w.r.t time
+        self.laserpowerfile = laserpowerfile
+        if self.laserpowerfile != None:
+            # Read laser power input and timestep-sync file
+            inp = pd.read_csv(os.path.join(input_data_dir, "laser_inputs", self.geom_dir, self.laserpowerfile) + ".csv").to_numpy()
+            self.laser_power_seq = inp[:, 0]
+            self.timesteps = inp[:, 1]
+            self.las_max_itr = len(self.timesteps)
+        else:
+            self.laser_power_seq = None
+            self.las_max_itr = np.inf
+
+        # las_max_itr: length of laser input signal
+        self.max_itr = np.min(self.las_max_itr, self.def_max_itr)
+
+        # VTK output steps
         self.VtkOutputStep = VtkOutputStep  # Time step between iterations
-        self.VtkOutputTimes = np.linspace(0, self.VtkOutputStep*self.max_itr, self.max_itr+1)
-        self.VtkOutputTimes = [x for x in self.VtkOutputTimes if x <= self.domain.end_sim_time]
 
-        # Zarr output steps: vector containing expected times at which a zarr file is generated
+        # Zarr output steps
         self.ZarrOutputStep = ZarrOutputStep
-        self.ZarrOutputTimes = np.linspace(0, self.ZarrOutputStep*self.max_itr, self.max_itr+1)
-        self.ZarrOutputTimes = [x for x in self.ZarrOutputTimes if x <= self.domain.end_sim_time]
+
+        #TODO
+        raise NotImplementedError("We need to remove the need for exp_zarr_len below, since when run on a stepwise basis, this is not known.")
         exp_zarr_len = len(self.ZarrOutputTimes)
 
 
@@ -112,11 +115,16 @@ class FeaModel():
             self.step()
 
     
-    def step(self):
+    def step(self, laser_power=None):
         ''' Run a single step of the simulation. '''
 
         # Load the current step of the laser profile, and multiply by the absortivity
-        self.heat_solver.q_in = self.laser_power_seq[self.heat_solver.current_step]*self.domain.absortivity
+        if laser_power == None:
+            if self.laserpowerfile == None:
+                raise ValueError("No laser power input provided to the step function, and no laser power file provided to the model constructor.")
+            self.heat_solver.q_in = self.laser_power_seq[self.heat_solver.current_step] * self.domain.absortivity
+        else:
+            self.heat_solver.q_in = laser_power * self.domain.absortivity
         
         # Check that the time steps agree
         if np.abs(self.domain.current_sim_time - self.timesteps[self.heat_solver.current_step]) / self.domain.dt > 0.01:
@@ -127,8 +135,8 @@ class FeaModel():
         # Run the solver
         self.heat_solver.time_integration()
 
-        # Save timestamped zarr file
-        if self.domain.current_sim_time >= (self.ZarrOutputTimes[self.ZarrFileNum] - (self.domain.dt/10)):
+        # Save timestamped zarr file at specified rate
+        if self.heat_solver.current_step % self.ZarrOutputStep == 0:
 
             # Free unused memory blocks
             mempool = cp.get_default_memory_pool()
@@ -142,10 +150,8 @@ class FeaModel():
             self.RecordTempsZarr(active_nodes, self.active_nodes_previous)
             self.active_nodes_previous = active_nodes
 
-        # save .vtk file if the current time is greater than an expected output time
-        # offset time by dt/10 due to floating point error
-        # honestly this whole thing should really be done with integers
-        if self.domain.current_sim_time >= (self.VtkOutputTimes[self.VtkFileNum] - (self.domain.dt/10)):
+        # save .vtk file at specified rate
+        if self.heat_solver.current_step % self.VtkOutputStep == 0:
             # Print time and completion status to terminal
             self.toc_jtr = time.perf_counter()
             self.elapsed_wall_time = self.toc_jtr - self.tic_start
@@ -183,7 +189,7 @@ class FeaModel():
             self.heat_solver.update_field_no_integration()
 
             # Save timestamped zarr file
-            if self.domain.current_sim_time >= (self.ZarrOutputTimes[self.ZarrFileNum] - (self.domain.dt/10)):
+            if self.heat_solver.current_step % self.ZarrOutputStep == 0:
 
                 # Find closest surfaces
                 self.nodal_surf_distance = self.heat_solver.find_closest_surf_dist()
@@ -201,7 +207,7 @@ class FeaModel():
             # save .vtk file if the current time is greater than an expected output time
             # offset time by dt/10 due to floating point error
             # honestly this whole thing should really be done with integers
-            if self.domain.current_sim_time >= (self.VtkOutputTimes[self.VtkFileNum] - (self.domain.dt/10)):
+            if self.heat_solver.current_step % self.VtkOutputStep == 0:
                 # Print time and completion status to terminal
                 self.toc_jtr = time.perf_counter()
                 self.elapsed_wall_time = self.toc_jtr - self.tic_start
