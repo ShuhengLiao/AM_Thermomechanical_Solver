@@ -106,63 +106,68 @@ class FeaModel():
         self.tic_start = time.perf_counter()
         self.tic_jtr = self.tic_start
 
-        active_nodes_previous = self.domain.active_nodes.astype('i1')
+        self.active_nodes_previous = self.domain.active_nodes.astype('i1')
 
         while self.domain.current_sim_time < self.domain.end_sim_time - 1e-8 and self.heat_solver.current_step < self.max_itr :
+            self.step()
 
-            # Load the current step of the laser profile, and multiply by the absortivity
-            self.heat_solver.q_in = self.laser_power_seq[self.heat_solver.current_step]*self.domain.absortivity
-            
-            # Check that the time steps agree
-            if np.abs(self.domain.current_sim_time - self.timesteps[self.heat_solver.current_step]) / self.domain.dt > 0.01:
-                # Check if the current domain is correct
-                # In the future, probably best to just check this once at the beginning instead of every iteration
-                warnings.warn("Warning! Time steps of LP input are not well aligned with simulation steps")
+    
+    def step(self):
+        ''' Run a single step of the simulation. '''
 
-            # Run the solver
-            self.heat_solver.time_integration()
-
-            # Save timestamped zarr file
-            if self.domain.current_sim_time >= (self.ZarrOutputTimes[self.ZarrFileNum] - (self.domain.dt/10)):
-
-                # Free unused memory blocks
-                mempool = cp.get_default_memory_pool()
-                mempool.free_all_blocks()
-
-                # Get active nodes.
-                active_nodes = self.domain.active_nodes.astype('i1')
-
-                # Save output file
-                self.ZarrFileNum = self.ZarrFileNum + 1
-                self.RecordTempsZarr(active_nodes, active_nodes_previous)
-                active_nodes_previous = active_nodes
-
-            # save .vtk file if the current time is greater than an expected output time
-            # offset time by dt/10 due to floating point error
-            # honestly this whole thing should really be done with integers
-            if self.domain.current_sim_time >= (self.VtkOutputTimes[self.VtkFileNum] - (self.domain.dt/10)):
-                # Print time and completion status to terminal
-                self.toc_jtr = time.perf_counter()
-                self.elapsed_wall_time = self.toc_jtr - self.tic_start
-                self.percent_complete = self.domain.current_sim_time/self.domain.end_sim_time
-                self.time_remaining = (self.elapsed_wall_time/self.domain.current_sim_time)*(self.domain.end_sim_time - self.domain.current_sim_time)
-                if self.verbose:
-                    print("Simulation time:  {:0.2} s, Percentage done:  {:0.3}%, Elapsed Time: {:0.3} s".format(
-                        self.domain.current_sim_time, 100.*self.domain.current_sim_time/self.domain.end_sim_time, self.elapsed_wall_time))
-                    self.stats_append = np.expand_dims(np.array([self.elapsed_wall_time, self.domain.current_sim_time, self.percent_complete, self.time_remaining]), axis=0)
-                    with open('debug.csv', 'a') as exportfile:
-                        np.savetxt(exportfile, self.stats_append, delimiter=',')
+        # Load the current step of the laser profile, and multiply by the absortivity
+        self.heat_solver.q_in = self.laser_power_seq[self.heat_solver.current_step]*self.domain.absortivity
         
-                # vtk file filename and save
-                if self.outputVtkFiles:
-                    filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.VtkFileNum))
-                    self.save_vtk(filename)
-                    
-                # iterate file number
-                self.VtkFileNum = self.VtkFileNum + 1
-                self.output_time = self.domain.current_sim_time
+        # Check that the time steps agree
+        if np.abs(self.domain.current_sim_time - self.timesteps[self.heat_solver.current_step]) / self.domain.dt > 0.01:
+            # Check if the current domain is correct
+            # In the future, probably best to just check this once at the beginning instead of every iteration
+            warnings.warn("Warning! Time steps of LP input are not well aligned with simulation steps")
 
- 
+        # Run the solver
+        self.heat_solver.time_integration()
+
+        # Save timestamped zarr file
+        if self.domain.current_sim_time >= (self.ZarrOutputTimes[self.ZarrFileNum] - (self.domain.dt/10)):
+
+            # Free unused memory blocks
+            mempool = cp.get_default_memory_pool()
+            mempool.free_all_blocks()
+
+            # Get active nodes.
+            active_nodes = self.domain.active_nodes.astype('i1')
+
+            # Save output file
+            self.ZarrFileNum = self.ZarrFileNum + 1
+            self.RecordTempsZarr(active_nodes, self.active_nodes_previous)
+            self.active_nodes_previous = active_nodes
+
+        # save .vtk file if the current time is greater than an expected output time
+        # offset time by dt/10 due to floating point error
+        # honestly this whole thing should really be done with integers
+        if self.domain.current_sim_time >= (self.VtkOutputTimes[self.VtkFileNum] - (self.domain.dt/10)):
+            # Print time and completion status to terminal
+            self.toc_jtr = time.perf_counter()
+            self.elapsed_wall_time = self.toc_jtr - self.tic_start
+            self.percent_complete = self.domain.current_sim_time/self.domain.end_sim_time
+            self.time_remaining = (self.elapsed_wall_time/self.domain.current_sim_time)*(self.domain.end_sim_time - self.domain.current_sim_time)
+            if self.verbose:
+                print("Simulation time:  {:0.2} s, Percentage done:  {:0.3}%, Elapsed Time: {:0.3} s".format(
+                    self.domain.current_sim_time, 100.*self.domain.current_sim_time/self.domain.end_sim_time, self.elapsed_wall_time))
+                self.stats_append = np.expand_dims(np.array([self.elapsed_wall_time, self.domain.current_sim_time, self.percent_complete, self.time_remaining]), axis=0)
+                with open('debug.csv', 'a') as exportfile:
+                    np.savetxt(exportfile, self.stats_append, delimiter=',')
+    
+            # vtk file filename and save
+            if self.outputVtkFiles:
+                filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.VtkFileNum))
+                self.save_vtk(filename)
+                
+            # iterate file number
+            self.VtkFileNum = self.VtkFileNum + 1
+            self.output_time = self.domain.current_sim_time
+
+
     def calc_geom_params(self):
         ''' Calculate surface distances. '''
 
