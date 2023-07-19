@@ -270,14 +270,14 @@ class FeaModel():
         if outputmode == "structured":
             # For each of the data streams, append the data for the current time step
             # expanding dimensions as needed to match
-            self.zarr_stream.streamobj["timestamp"][self.ZarrFileNum] = timestep
-            self.zarr_stream.streamobj["dt_pos_x"][self.ZarrFileNum] = pos_x
-            self.zarr_stream.streamobj["dt_pos_y"][self.ZarrFileNum] = pos_y
-            self.zarr_stream.streamobj["dt_pos_z"][self.ZarrFileNum] = pos_z
-            self.zarr_stream.streamobj["dt_laser_power"][self.ZarrFileNum] = laser_power
-            self.zarr_stream.streamobj["ff_dt_active_nodes"][self.ZarrFileNum] = active_nodes
-            self.zarr_stream.streamobj["ff_dt_temperature"][self.ZarrFileNum] = ff_temperature
-            self.zarr_stream.streamobj["ff_dt_active_elements"][self.ZarrFileNum] = active_elements
+            self.zarr_stream.streamobj["timestamp"].append(timestep)
+            self.zarr_stream.streamobj["dt_pos_x"].append(pos_x)
+            self.zarr_stream.streamobj["dt_pos_y"].append(pos_y)
+            self.zarr_stream.streamobj["dt_pos_z"].append(pos_z)
+            self.zarr_stream.streamobj["dt_laser_power"].append(laser_power)
+            self.zarr_stream.streamobj["ff_dt_active_nodes"].append(active_nodes)
+            self.zarr_stream.streamobj["ff_dt_temperature"].append(ff_temperature)
+            self.zarr_stream.streamobj["ff_dt_active_elements"].append(active_elements)
             self.zarr_stream.streamobj["ff_laser_power_birth"].oindex[activated_nodes] = laser_power[0]
 
         elif outputmode == "bulked":
@@ -373,7 +373,7 @@ class AuxDataRecorder():
                                                                         overwrite=True)
             else:
                 self.streamobj[stream] = self.out_root.create_dataset(stream,
-                                                                        shape=(ExpOutputSteps+1, self.dimsdict[stream]),
+                                                                        shape=(1, self.dimsdict[stream]),
                                                                         chunks=(1, self.dimsdict[stream]),
                                                                         dtype=self.typedict[stream],
                                                                         compressor=None,
@@ -434,7 +434,7 @@ class DataRecorder():
                                                                         overwrite=True)
             else:
                 self.streamobj[stream] = self.out_root.create_dataset(stream,
-                                                                        shape=(ExpOutputSteps+1, self.dimsdict[stream]),
+                                                                        shape=(1, self.dimsdict[stream]),
                                                                         chunks=(1, self.dimsdict[stream]),
                                                                         dtype=self.typedict[stream],
                                                                         compressor=None,
