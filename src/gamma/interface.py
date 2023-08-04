@@ -2,7 +2,6 @@ import os
 import subprocess
 import time
 import warnings
-
 import cupy as cp
 import numpy as np
 import pandas as pd
@@ -11,7 +10,6 @@ import vtk
 import zarr as z
 
 from gamma.simulator.gamma import domain_mgr, heat_solve_mgr
-
 
 class FeaModel():
     ''' This class manages the FEA simulation. Use this as the primary interface to the simulation. '''
@@ -131,7 +129,6 @@ class FeaModel():
 
                 # Get active nodes.
                 active_nodes = self.domain.active_nodes.astype('i1')
-
                 # Save output file
                 self.ZarrFileNum = self.ZarrFileNum + 1
                 self.RecordTempsZarr(active_nodes, active_nodes_previous)
@@ -257,28 +254,28 @@ class FeaModel():
     def RecordTempsZarr(self, active_nodes, active_nodes_prev, outputmode="structured"):
         '''Records a single data point to a zarr file'''
 
-        timestep = np.expand_dims(self.domain.current_sim_time, axis=0)
-        pos_x = np.expand_dims(self.heat_solver.laser_loc[0].get(), axis=0)
-        pos_y = np.expand_dims(self.heat_solver.laser_loc[1].get(), axis=0)
-        pos_z = np.expand_dims(self.heat_solver.laser_loc[2].get(), axis=0)
-        laser_power = np.expand_dims(self.heat_solver.q_in, axis=0)
-        ff_temperature = self.heat_solver.temperature.get()
-        active_elements = self.domain.active_elements.astype('i1')
+        timestep = np.expand_dims(np.expand_dims(self.domain.current_sim_time, axis=0), axis=1)
+        pos_x = np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[0].get(), axis=0), axis=1)
+        pos_y = np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[1].get(), axis=0), axis=1)
+        pos_z = np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[2].get(), axis=0), axis=1)
+        laser_power = np.expand_dims(np.expand_dims(self.heat_solver.q_in, axis=0), axis=1)
+        ff_temperature = np.expand_dims(self.heat_solver.temperature.get(), axis=0)
+        active_elements = np.expand_dims(self.domain.active_elements.astype('i1'), axis=0)
 
         activated_nodes = np.where(active_nodes != active_nodes_prev)[0]
 
         if outputmode == "structured":
             # For each of the data streams, append the data for the current time step
             # expanding dimensions as needed to match
-            self.zarr_stream.streamobj["timestamp"].append(timestep)
-            self.zarr_stream.streamobj["dt_pos_x"].append(pos_x)
-            self.zarr_stream.streamobj["dt_pos_y"].append(pos_y)
-            self.zarr_stream.streamobj["dt_pos_z"].append(pos_z)
-            self.zarr_stream.streamobj["dt_laser_power"].append(laser_power)
-            self.zarr_stream.streamobj["ff_dt_active_nodes"].append(active_nodes)
-            self.zarr_stream.streamobj["ff_dt_temperature"].append(ff_temperature)
-            self.zarr_stream.streamobj["ff_dt_active_elements"].append(active_elements)
-            self.zarr_stream.streamobj["ff_laser_power_birth"].oindex[activated_nodes] = laser_power[0]
+            self.zarr_stream.streamobj["timestamp"].append(timestep, axis=0)
+            self.zarr_stream.streamobj["dt_pos_x"].append(pos_x, axis=0)
+            self.zarr_stream.streamobj["dt_pos_y"].append(pos_y, axis=0)
+            self.zarr_stream.streamobj["dt_pos_z"].append(pos_z, axis=0)
+            self.zarr_stream.streamobj["dt_laser_power"].append(laser_power, axis=0)
+            self.zarr_stream.streamobj["ff_dt_active_nodes"].append(np.expand_dims(active_nodes, axis=0), axis=0)
+            self.zarr_stream.streamobj["ff_dt_temperature"].append(ff_temperature, axis=0)
+            self.zarr_stream.streamobj["ff_dt_active_elements"].append(active_elements, axis=0)
+            self.zarr_stream.streamobj["ff_laser_power_birth"].oindex[activated_nodes] = laser_power[0][0]
 
         elif outputmode == "bulked":
             new_row = np.zeros([1, (5+self.domain.nodes.shape[0])])
@@ -299,7 +296,6 @@ class FeaModel():
         timestep = np.expand_dims(self.domain.current_sim_time, axis=0)
         laser_dist = self.nodal_laser_distance
         surf_dist = self.nodal_surf_distance
-
         self.zarr_stream.streamobj["timestamp"][self.ZarrFileNum] = timestep
         self.zarr_stream.streamobj["ff_dt_dist_node_laser"][self.ZarrFileNum] = laser_dist
         self.zarr_stream.streamobj["ff_dt_dist_node_boundary"][self.ZarrFileNum] = surf_dist
