@@ -50,7 +50,7 @@ class FeaModel():
             self.las_max_itr = np.inf
 
         # las_max_itr: length of laser input signal
-        self.max_itr = np.min(self.las_max_itr, self.def_max_itr)
+        self.max_itr = min(self.las_max_itr, self.def_max_itr)
 
         # VTK output steps
         self.VtkOutputStep = VtkOutputStep  # Time step between iterations
@@ -58,27 +58,22 @@ class FeaModel():
         # Zarr output steps
         self.ZarrOutputStep = ZarrOutputStep
 
-        #TODO
-        raise NotImplementedError("We need to remove the need for exp_zarr_len below, since when run on a stepwise basis, this is not known.")
-        exp_zarr_len = len(self.ZarrOutputTimes)
-
-
         ### Initialization of outputs
         # Start datarecorder object to save pointwise data
         if CalcNodeSurfDist:
             self.zarr_stream = AuxDataRecorder(nnodes=self.domain.nodes.shape[0],
                                                 outputFolderPath=(os.path.join("./zarr_output",
                                                                             self.geom_dir,
-                                                                            self.laserpowerfile) +"_aux.zarr"),
-                                                ExpOutputSteps=exp_zarr_len)
+                                                                            self.laserpowerfile) +"_aux.zarr")
+            )
             
         else:
             self.zarr_stream = DataRecorder(nnodes=self.domain.nodes.shape[0],
                                             nele=self.domain.elements.shape[0],
                                             outputFolderPath=(os.path.join("./zarr_output",
                                                                         self.geom_dir,
-                                                                        self.laserpowerfile) +".zarr"),
-                                            ExpOutputSteps=exp_zarr_len)
+                                                                        self.laserpowerfile) +".zarr")
+            )
 
             # Record nodes and nodal locations 
             self.zarr_stream.nodelocs = self.domain.nodes
@@ -344,7 +339,6 @@ class FeaModel():
 class AuxDataRecorder():
     def __init__(self,
         nnodes,
-        ExpOutputSteps,
         outputFolderPath
     ):
         
@@ -391,7 +385,6 @@ class DataRecorder():
     def __init__(self,
         nnodes,
         nele,
-        ExpOutputSteps,
         outputFolderPath,
         outputmode = "structured"
     ):
