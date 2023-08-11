@@ -181,9 +181,12 @@ class FeaModel():
             # Don't run the solver - instead, just move the laser
             self.heat_solver.update_field_no_integration()
 
-            # Save timestamped zarr file
-            if self.heat_solver.current_step % self.ZarrOutputStep == 0:
+            # Determine which files to save.
+            saveZarr = self.heat_solver.current_step % self.ZarrOutputStep == 0
+            saveVtk = self.heat_solver.current_step % self.VtkOutputStep == 0
 
+            # Calculate distances.
+            if saveZarr or saveVtk:
                 # Find closest surfaces
                 self.nodal_surf_distance = self.heat_solver.find_closest_surf_dist()
                 # Free unused memory blocks
@@ -192,7 +195,9 @@ class FeaModel():
 
                 # Find laser distance
                 self.nodal_laser_distance = self.heat_solver.find_laser_dist()
-                
+
+            # Save timestamped zarr file
+            if saveZarr:
                 # Save output file
                 self.ZarrFileNum = self.ZarrFileNum + 1
                 self.RecordAuxZarr()
@@ -200,7 +205,7 @@ class FeaModel():
             # save .vtk file if the current time is greater than an expected output time
             # offset time by dt/10 due to floating point error
             # honestly this whole thing should really be done with integers
-            if self.heat_solver.current_step % self.VtkOutputStep == 0:
+            if saveVtk:
                 # Print time and completion status to terminal
                 self.toc_jtr = time.perf_counter()
                 self.elapsed_wall_time = self.toc_jtr - self.tic_start
