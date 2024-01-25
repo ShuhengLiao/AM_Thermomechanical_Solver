@@ -158,7 +158,7 @@ while domain.current_time<endtime-domain.dt:
                 n_plast = len(IND_p[IND_p])
                 print(' plastic integration points: ', n_plast, ' of ', IND_p.shape[0]*IND_p.shape[1])
                 F = B.transpose() @ ((ele_detJac[:,:,cp.newaxis].repeat(6,axis=2)*S).reshape(-1))
-                dU[Q,:],error = cusparse.linalg.cg(K_tangent[Q[0:n_n_active].flatten()][:,Q[0:n_n_active].flatten()],-F[Q[0:n_n_active].flatten()],tol=tol)
+                dU[Q],error = cusparse.linalg.cg(K_tangent[Q[0:n_n_active].flatten()][:,Q[0:n_n_active].flatten()],-F[Q[0:n_n_active].flatten()],tol=tol)
                 U_new = U_it + beta*dU[0:n_n_active,:] 
                 q1 = beta**2*dU[0:n_n_active].flatten()@K_elast@dU[0:n_n_active].flatten()
                 q2 = U_it[0:n_n_active].flatten()@K_elast@U_it[0:n_n_active].flatten()
