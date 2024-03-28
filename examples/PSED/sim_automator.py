@@ -19,7 +19,7 @@ def CallRunSim(GPUse, SimSet, StartWallTime):
             
             # Create simulation object
             sim_itr = rs.FeaModel(
-                                input_data_dir=os.path.join(folder, "..", "data"),
+                                input_data_dir= os.path.join(folder, os.pardir, "data"),
                                 geom_dir=sim_dir_name,
                                 laserpowerfile=laser_file,
                                 VtkOutputStep = 1.,
@@ -45,12 +45,12 @@ rclone_stream = "ONEDRIVE-NU:"
 dest_dir = os.path.join("DED-DT - IDEAS Lab", "08-Technical", "data-gamma-new")
 
 # prefix for laser power signals
-prefix = "FLP_"
+prefix = "NLP_"
 
 # Simulations to run
 sim_list = []
-sim_list.append(range(0, 51))
-sim_list.append(range(51, 101))
+sim_list.append(range(0, 1))
+#sim_list.append(range(51, 101))
 
 NumGPUs = len(sim_list)
 

@@ -2,7 +2,6 @@ import os
 import subprocess
 import time
 import warnings
-
 import cupy as cp
 import numpy as np
 import pandas as pd
@@ -11,7 +10,6 @@ import vtk
 import zarr as z
 
 from gamma.simulator.gamma import domain_mgr, heat_solve_mgr
-
 
 class FeaModel():
     ''' This class manages the FEA simulation. Use this as the primary interface to the simulation. '''
@@ -25,9 +23,6 @@ class FeaModel():
         # output
         self.verbose = verbose
 
-        # laserpowerfile: profile of laser power w.r.t time
-        self.laserpowerfile = laserpowerfile
-
         # geom_dir: directory containing .k input file and toolpath.crs file
         self.geom_dir = geom_dir
 
@@ -39,28 +34,29 @@ class FeaModel():
         self.domain = domain_mgr(input_data_dir=input_data_dir, filename=self.geometry_file, toolpathdir=self.toolpath_file, verbose=self.verbose, timestep_override=timestep_override)
         self.heat_solver = heat_solve_mgr(self.domain)
         
-        # Read laser power input and timestep-sync file
-        inp = pd.read_csv(os.path.join(input_data_dir, "laser_inputs", self.geom_dir, self.laserpowerfile) + ".csv").to_numpy()
-        self.laser_power_seq = inp[:, 0]
-        self.timesteps = inp[:, 1]
-        self.las_max_itr = len(self.timesteps)
-
-        # las_max_itr: length of laser input signal
         # def_max_itr: time for original simulation to run to completion
         self.def_max_itr = int(self.domain.end_sim_time/self.domain.dt)
+
+        # laserpowerfile: profile of laser power w.r.t time
+        self.laserpowerfile = laserpowerfile
+        if self.laserpowerfile != None:
+            # Read laser power input and timestep-sync file
+            inp = pd.read_csv(os.path.join(input_data_dir, "laser_inputs", self.geom_dir, self.laserpowerfile) + ".csv").to_numpy()
+            self.laser_power_seq = inp[:, 0]
+            self.timesteps = inp[:, 1]
+            self.las_max_itr = len(self.timesteps)
+        else:
+            self.laser_power_seq = None
+            self.las_max_itr = np.inf
+
+        # las_max_itr: length of laser input signal
         self.max_itr = min(self.las_max_itr, self.def_max_itr)
 
-        # VTK output_times: vector containing expected times at which a vtk file is outputted.
+        # VTK output steps
         self.VtkOutputStep = VtkOutputStep  # Time step between iterations
-        self.VtkOutputTimes = np.linspace(0, self.VtkOutputStep*self.max_itr, self.max_itr+1)
-        self.VtkOutputTimes = [x for x in self.VtkOutputTimes if x <= self.domain.end_sim_time]
 
-        # Zarr output steps: vector containing expected times at which a zarr file is generated
+        # Zarr output steps
         self.ZarrOutputStep = ZarrOutputStep
-        self.ZarrOutputTimes = np.linspace(0, self.ZarrOutputStep*self.max_itr, self.max_itr+1)
-        self.ZarrOutputTimes = [x for x in self.ZarrOutputTimes if x <= self.domain.end_sim_time]
-        exp_zarr_len = len(self.ZarrOutputTimes)
-
 
         ### Initialization of outputs
         # Start datarecorder object to save pointwise data
@@ -68,16 +64,16 @@ class FeaModel():
             self.zarr_stream = AuxDataRecorder(nnodes=self.domain.nodes.shape[0],
                                                 outputFolderPath=(os.path.join("./zarr_output",
                                                                             self.geom_dir,
-                                                                            self.laserpowerfile) +"_aux.zarr"),
-                                                ExpOutputSteps=exp_zarr_len)
+                                                                            self.laserpowerfile) +"_aux.zarr")
+            )
             
         else:
             self.zarr_stream = DataRecorder(nnodes=self.domain.nodes.shape[0],
                                             nele=self.domain.elements.shape[0],
                                             outputFolderPath=(os.path.join("./zarr_output",
                                                                         self.geom_dir,
-                                                                        self.laserpowerfile) +".zarr"),
-                                            ExpOutputSteps=exp_zarr_len)
+                                                                        self.laserpowerfile) +".zarr")
+            )
 
             # Record nodes and nodal locations 
             self.zarr_stream.nodelocs = self.domain.nodes
@@ -106,63 +102,71 @@ class FeaModel():
         self.tic_start = time.perf_counter()
         self.tic_jtr = self.tic_start
 
-        active_nodes_previous = self.domain.active_nodes.astype('i1')
+        self.active_nodes_previous = self.domain.active_nodes.astype('i1')
 
         while self.domain.current_sim_time < self.domain.end_sim_time - 1e-8 and self.heat_solver.current_step < self.max_itr :
+            self.step()
 
-            # Load the current step of the laser profile, and multiply by the absortivity
-            self.heat_solver.q_in = self.laser_power_seq[self.heat_solver.current_step]*self.domain.absortivity
-            
-            # Check that the time steps agree
-            if np.abs(self.domain.current_sim_time - self.timesteps[self.heat_solver.current_step]) / self.domain.dt > 0.01:
-                # Check if the current domain is correct
-                # In the future, probably best to just check this once at the beginning instead of every iteration
-                warnings.warn("Warning! Time steps of LP input are not well aligned with simulation steps")
+    
+    def step(self, laser_power=None):
+        ''' Run a single step of the simulation. '''
 
-            # Run the solver
-            self.heat_solver.time_integration()
-
-            # Save timestamped zarr file
-            if self.domain.current_sim_time >= (self.ZarrOutputTimes[self.ZarrFileNum] - (self.domain.dt/10)):
-
-                # Free unused memory blocks
-                mempool = cp.get_default_memory_pool()
-                mempool.free_all_blocks()
-
-                # Get active nodes.
-                active_nodes = self.domain.active_nodes.astype('i1')
-
-                # Save output file
-                self.ZarrFileNum = self.ZarrFileNum + 1
-                self.RecordTempsZarr(active_nodes, active_nodes_previous)
-                active_nodes_previous = active_nodes
-
-            # save .vtk file if the current time is greater than an expected output time
-            # offset time by dt/10 due to floating point error
-            # honestly this whole thing should really be done with integers
-            if self.domain.current_sim_time >= (self.VtkOutputTimes[self.VtkFileNum] - (self.domain.dt/10)):
-                # Print time and completion status to terminal
-                self.toc_jtr = time.perf_counter()
-                self.elapsed_wall_time = self.toc_jtr - self.tic_start
-                self.percent_complete = self.domain.current_sim_time/self.domain.end_sim_time
-                self.time_remaining = (self.elapsed_wall_time/self.domain.current_sim_time)*(self.domain.end_sim_time - self.domain.current_sim_time)
-                if self.verbose:
-                    print("Simulation time:  {:0.2} s, Percentage done:  {:0.3}%, Elapsed Time: {:0.3} s".format(
-                        self.domain.current_sim_time, 100.*self.domain.current_sim_time/self.domain.end_sim_time, self.elapsed_wall_time))
-                    self.stats_append = np.expand_dims(np.array([self.elapsed_wall_time, self.domain.current_sim_time, self.percent_complete, self.time_remaining]), axis=0)
-                    with open('debug.csv', 'a') as exportfile:
-                        np.savetxt(exportfile, self.stats_append, delimiter=',')
+        # Load the current step of the laser profile, and multiply by the absortivity
+        if laser_power == None:
+            if self.laserpowerfile == None:
+                raise ValueError("No laser power input provided to the step function, and no laser power file provided to the model constructor.")
+            self.heat_solver.q_in = self.laser_power_seq[self.heat_solver.current_step] * self.domain.absortivity
+        else:
+            self.heat_solver.q_in = laser_power * self.domain.absortivity
         
-                # vtk file filename and save
-                if self.outputVtkFiles:
-                    filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.VtkFileNum))
-                    self.save_vtk(filename)
-                    
-                # iterate file number
-                self.VtkFileNum = self.VtkFileNum + 1
-                self.output_time = self.domain.current_sim_time
+        # Check that the time steps agree
+        if np.abs(self.domain.current_sim_time - self.timesteps[self.heat_solver.current_step]) / self.domain.dt > 0.01:
+            # Check if the current domain is correct
+            # In the future, probably best to just check this once at the beginning instead of every iteration
+            warnings.warn("Warning! Time steps of LP input are not well aligned with simulation steps")
 
- 
+        # Run the solver
+        self.heat_solver.time_integration()
+
+        # Save timestamped zarr file at specified rate
+        if self.heat_solver.current_step % self.ZarrOutputStep == 0:
+
+            # Free unused memory blocks
+            mempool = cp.get_default_memory_pool()
+            mempool.free_all_blocks()
+
+            # Get active nodes.
+            active_nodes = self.domain.active_nodes.astype('i1')
+
+            # Save output file
+            self.ZarrFileNum = self.ZarrFileNum + 1
+            self.RecordTempsZarr(active_nodes, self.active_nodes_previous)
+            self.active_nodes_previous = active_nodes
+
+        # save .vtk file at specified rate
+        if self.heat_solver.current_step % self.VtkOutputStep == 0:
+            # Print time and completion status to terminal
+            self.toc_jtr = time.perf_counter()
+            self.elapsed_wall_time = self.toc_jtr - self.tic_start
+            self.percent_complete = self.domain.current_sim_time/self.domain.end_sim_time
+            self.time_remaining = (self.elapsed_wall_time/self.domain.current_sim_time)*(self.domain.end_sim_time - self.domain.current_sim_time)
+            if self.verbose:
+                print("Simulation time:  {:0.2} s, Percentage done:  {:0.3}%, Elapsed Time: {:0.3} s".format(
+                    self.domain.current_sim_time, 100.*self.domain.current_sim_time/self.domain.end_sim_time, self.elapsed_wall_time))
+                self.stats_append = np.expand_dims(np.array([self.elapsed_wall_time, self.domain.current_sim_time, self.percent_complete, self.time_remaining]), axis=0)
+                with open('debug.csv', 'a') as exportfile:
+                    np.savetxt(exportfile, self.stats_append, delimiter=',')
+    
+            # vtk file filename and save
+            if self.outputVtkFiles:
+                filename = os.path.join('vtk_files', self.geom_dir, self.laserpowerfile, 'u{:05d}.vtk'.format(self.VtkFileNum))
+                self.save_vtk(filename)
+                
+            # iterate file number
+            self.VtkFileNum = self.VtkFileNum + 1
+            self.output_time = self.domain.current_sim_time
+
+
     def calc_geom_params(self):
         ''' Calculate surface distances. '''
 
@@ -177,9 +181,12 @@ class FeaModel():
             # Don't run the solver - instead, just move the laser
             self.heat_solver.update_field_no_integration()
 
-            # Save timestamped zarr file
-            if self.domain.current_sim_time >= (self.ZarrOutputTimes[self.ZarrFileNum] - (self.domain.dt/10)):
+            # Determine which files to save.
+            saveZarr = self.heat_solver.current_step % self.ZarrOutputStep == 0
+            saveVtk = self.heat_solver.current_step % self.VtkOutputStep == 0
 
+            # Calculate distances.
+            if saveZarr or saveVtk:
                 # Find closest surfaces
                 self.nodal_surf_distance = self.heat_solver.find_closest_surf_dist()
                 # Free unused memory blocks
@@ -188,7 +195,9 @@ class FeaModel():
 
                 # Find laser distance
                 self.nodal_laser_distance = self.heat_solver.find_laser_dist()
-                
+
+            # Save timestamped zarr file
+            if saveZarr:
                 # Save output file
                 self.ZarrFileNum = self.ZarrFileNum + 1
                 self.RecordAuxZarr()
@@ -196,7 +205,7 @@ class FeaModel():
             # save .vtk file if the current time is greater than an expected output time
             # offset time by dt/10 due to floating point error
             # honestly this whole thing should really be done with integers
-            if self.domain.current_sim_time >= (self.VtkOutputTimes[self.VtkFileNum] - (self.domain.dt/10)):
+            if saveVtk:
                 # Print time and completion status to terminal
                 self.toc_jtr = time.perf_counter()
                 self.elapsed_wall_time = self.toc_jtr - self.tic_start
@@ -257,28 +266,28 @@ class FeaModel():
     def RecordTempsZarr(self, active_nodes, active_nodes_prev, outputmode="structured"):
         '''Records a single data point to a zarr file'''
 
-        timestep = np.expand_dims(self.domain.current_sim_time, axis=0)
-        pos_x = np.expand_dims(self.heat_solver.laser_loc[0].get(), axis=0)
-        pos_y = np.expand_dims(self.heat_solver.laser_loc[1].get(), axis=0)
-        pos_z = np.expand_dims(self.heat_solver.laser_loc[2].get(), axis=0)
-        laser_power = np.expand_dims(self.heat_solver.q_in, axis=0)
-        ff_temperature = self.heat_solver.temperature.get()
-        active_elements = self.domain.active_elements.astype('i1')
+        timestep = np.expand_dims(np.expand_dims(self.domain.current_sim_time, axis=0), axis=1)
+        pos_x = np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[0].get(), axis=0), axis=1)
+        pos_y = np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[1].get(), axis=0), axis=1)
+        pos_z = np.expand_dims(np.expand_dims(self.heat_solver.laser_loc[2].get(), axis=0), axis=1)
+        laser_power = np.expand_dims(np.expand_dims(self.heat_solver.q_in, axis=0), axis=1)
+        ff_temperature = np.expand_dims(self.heat_solver.temperature.get(), axis=0)
+        active_elements = np.expand_dims(self.domain.active_elements.astype('i1'), axis=0)
 
         activated_nodes = np.where(active_nodes != active_nodes_prev)[0]
 
         if outputmode == "structured":
             # For each of the data streams, append the data for the current time step
             # expanding dimensions as needed to match
-            self.zarr_stream.streamobj["timestamp"][self.ZarrFileNum] = timestep
-            self.zarr_stream.streamobj["dt_pos_x"][self.ZarrFileNum] = pos_x
-            self.zarr_stream.streamobj["dt_pos_y"][self.ZarrFileNum] = pos_y
-            self.zarr_stream.streamobj["dt_pos_z"][self.ZarrFileNum] = pos_z
-            self.zarr_stream.streamobj["dt_laser_power"][self.ZarrFileNum] = laser_power
-            self.zarr_stream.streamobj["ff_dt_active_nodes"][self.ZarrFileNum] = active_nodes
-            self.zarr_stream.streamobj["ff_dt_temperature"][self.ZarrFileNum] = ff_temperature
-            self.zarr_stream.streamobj["ff_dt_active_elements"][self.ZarrFileNum] = active_elements
-            self.zarr_stream.streamobj["ff_laser_power_birth"].oindex[activated_nodes] = laser_power[0]
+            self.zarr_stream.streamobj["timestamp"].append(timestep, axis=0)
+            self.zarr_stream.streamobj["dt_pos_x"].append(pos_x, axis=0)
+            self.zarr_stream.streamobj["dt_pos_y"].append(pos_y, axis=0)
+            self.zarr_stream.streamobj["dt_pos_z"].append(pos_z, axis=0)
+            self.zarr_stream.streamobj["dt_laser_power"].append(laser_power, axis=0)
+            self.zarr_stream.streamobj["ff_dt_active_nodes"].append(np.expand_dims(active_nodes, axis=0), axis=0)
+            self.zarr_stream.streamobj["ff_dt_temperature"].append(ff_temperature, axis=0)
+            self.zarr_stream.streamobj["ff_dt_active_elements"].append(active_elements, axis=0)
+            self.zarr_stream.streamobj["ff_laser_power_birth"].oindex[activated_nodes] = laser_power[0][0]
 
         elif outputmode == "bulked":
             new_row = np.zeros([1, (5+self.domain.nodes.shape[0])])
@@ -299,7 +308,6 @@ class FeaModel():
         timestep = np.expand_dims(self.domain.current_sim_time, axis=0)
         laser_dist = self.nodal_laser_distance
         surf_dist = self.nodal_surf_distance
-
         self.zarr_stream.streamobj["timestamp"][self.ZarrFileNum] = timestep
         self.zarr_stream.streamobj["ff_dt_dist_node_laser"][self.ZarrFileNum] = laser_dist
         self.zarr_stream.streamobj["ff_dt_dist_node_boundary"][self.ZarrFileNum] = surf_dist
@@ -336,7 +344,6 @@ class FeaModel():
 class AuxDataRecorder():
     def __init__(self,
         nnodes,
-        ExpOutputSteps,
         outputFolderPath
     ):
         
@@ -373,7 +380,7 @@ class AuxDataRecorder():
                                                                         overwrite=True)
             else:
                 self.streamobj[stream] = self.out_root.create_dataset(stream,
-                                                                        shape=(ExpOutputSteps+1, self.dimsdict[stream]),
+                                                                        shape=(1, self.dimsdict[stream]),
                                                                         chunks=(1, self.dimsdict[stream]),
                                                                         dtype=self.typedict[stream],
                                                                         compressor=None,
@@ -383,7 +390,6 @@ class DataRecorder():
     def __init__(self,
         nnodes,
         nele,
-        ExpOutputSteps,
         outputFolderPath,
         outputmode = "structured"
     ):
@@ -434,7 +440,7 @@ class DataRecorder():
                                                                         overwrite=True)
             else:
                 self.streamobj[stream] = self.out_root.create_dataset(stream,
-                                                                        shape=(ExpOutputSteps+1, self.dimsdict[stream]),
+                                                                        shape=(1, self.dimsdict[stream]),
                                                                         chunks=(1, self.dimsdict[stream]),
                                                                         dtype=self.typedict[stream],
                                                                         compressor=None,
