@@ -1,26 +1,11 @@
-import sys
-sys.path.append('../../includes')
 import numpy as cp
 import numpy as np
-import cupyx.scipy.sparse.linalg
-import cupyx.scipy.sparse as cusparse
 from scipy.sparse import csr_matrix,linalg
 import pandas as pd
 import time
-import matplotlib.pyplot as plt
 import pyvista as pv
-from pyvirtualdisplay import Display
 import vtk
-from numba import jit,vectorize,guvectorize,cuda
-
 from numba import jit
-import pandas as pd
-import time
-import numpy as np
-import matplotlib.pyplot as plt
-from pyvirtualdisplay import Display
-import vtk
-import pyvista as pv
 
 @jit('void(int64[:,:], float64[:],float64[:])',nopython=True)
 def asign_birth_node(elements,element_birth,node_birth):

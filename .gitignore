@@ -1,0 +1,12 @@
+*.vtk
+*.pyc
+*.egg-info
+output/
+zarr_output/
+*.zarr
+launch.json
+*.tar.gz
+*.zgroup
+*.pyc
+*.csv
+*nohup.out*
